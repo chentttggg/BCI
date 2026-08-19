@@ -26,6 +26,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=8",
+    "pyinstaller>=6",
 ]
 
 [project.scripts]
@@ -34,6 +35,7 @@ guess-number-backend = "guess_number.backend.main:main"
 guess-number-check-edf = "guess_number.scripts.check_edf_channels:main"
 guess-number-make-synthetic = "guess_number.scripts.make_synthetic_dataset:main"
 guess-number-tap-test = "guess_number.scripts.electrode_tap_test:main"
+guess-number-researcher = "guess_number.gui.researcher:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

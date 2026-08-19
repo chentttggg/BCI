@@ -11,3 +11,7 @@ Data/
 
 # provided SDK examples are read-only reference material
 brainsync-sdk-example-main/
+
+# packaged researcher app
+dist/
+build/
