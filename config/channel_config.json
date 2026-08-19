@@ -35,9 +35,9 @@
     }
   ],
   "ref_label": "A1",
-  "gnd_label": "A1",
-  "ref_gnd_combined": true,
-  "note": "A1 为耳部接地/REF 共用电极；8 个 EEG 通道按 0..7 顺序绑定 Fz,Cz,P3,Pz,P4,PO7,PO8,Oz。不使用说明书默认 Fpz/AFz。",
+  "gnd_label": "A2",
+  "ref_gnd_combined": false,
+  "note": "A1 为耳部 REF，A2 为耳部 GND；8 个 EEG 通道按 0..7 顺序绑定 Fz,Cz,P3,Pz,P4,PO7,PO8,Oz。",
   "labels": [
     "Fz",
     "Cz",

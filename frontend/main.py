@@ -36,7 +36,7 @@ def _read_channels(path: str | Path) -> tuple[list[str], str, str]:
         obj = json.load(f)
     channels = [str(item["label"]) for item in obj["eeg_channels"]]
     ref = str(obj.get("ref_label", "A1"))
-    gnd = str(obj.get("gnd_label", "A1"))
+    gnd = str(obj.get("gnd_label", "A2"))
     return channels, ref, gnd
 
 

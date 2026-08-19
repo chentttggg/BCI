@@ -28,7 +28,7 @@ def default_channel_config(active_mask: int = 0xFF):
         labels=DEFAULT_EEG_LABELS,
         active_mask=active_mask,
         ref_label="A1",
-        gnd_label="A1",
+        gnd_label="A2",
         eeg=[
             sdk.ElectrodeAssignment(label, channel)
             for channel, label in enumerate(DEFAULT_EEG_LABELS)

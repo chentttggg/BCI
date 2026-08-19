@@ -39,7 +39,7 @@ class ExperimentConfig:
     gain: str = "Gain24"
     channels: list[str] = field(default_factory=lambda: ["Fz", "Cz", "P3", "Pz", "P4", "PO7", "PO8", "Oz"])
     ref_label: str = "A1"
-    gnd_label: str = "A1"
+    gnd_label: str = "A2"
     acquisition_mode: str = "mock"
     output_dir: str | Path = "data/raw"
     seed: int = 0

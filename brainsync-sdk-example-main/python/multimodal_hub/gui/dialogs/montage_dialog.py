@@ -416,9 +416,8 @@ class MontageDialog(QtWidgets.QDialog):
             raise ValueError(f"REF label '{ref_val}' conflicts with EEG channel labels.")
         if gnd_val and gnd_val in labels_seen:
             raise ValueError(f"GND label '{gnd_val}' conflicts with EEG channel labels.")
-        # A1 may be physically wired as a combined ear ground/REF electrode.
         if ref_val and gnd_val and ref_val == gnd_val:
-            print(f"Montage note: REF and GND are both '{ref_val}' (combined ground/REF).")
+            raise ValueError("REF and GND labels cannot be the same.")
 
         stim = []
         for row in range(4):

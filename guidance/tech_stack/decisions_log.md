@@ -94,3 +94,18 @@
 - 影响范围：channel_config、前端 session 元数据、指导文档。
 - 回滚：若后续硬件增加独立 GND，修改 `config/channel_config.json` 的
   `gnd_label` 与 `ref_gnd_combined=false`。
+
+## D-008 修正 REF/GND：A1=REF，A2=GND
+
+- 日期：2026-08-19
+- 变更者：EEG 分析工程师（agent）
+- 变更理由：用户澄清硬件实际为 A1 接耳部 REF，A2 接耳部 GND，
+  并非 A1 共用 REF/GND。
+- 变更内容：
+  - `config/channel_config.json`：`ref_label=A1`、`gnd_label=A2`、
+    `ref_gnd_combined=false`；
+  - 工作站 `multimodal_hub/channel_config.json` 与 GUI 兼容文件同步；
+  - `multimodal_hub/core/channel_config.py` 默认值改为 A1/A2；
+  - Montage 对话框恢复 REF≠GND 校验；
+  - 前端默认 `gnd_label` 改为 A2。
+- 影响范围：全部 ChannelConfig 相关文件。

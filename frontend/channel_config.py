@@ -2,7 +2,7 @@
 
 Project montage (single source of truth):
     Fz, Cz, P3, Pz, P4, PO7, PO8, Oz
-    REF = A1, GND = A1 (耳部接地/REF 共用电极)
+    REF = A1 (耳部参考), GND = A2 (耳部接地)
 
 The BrainSync SDK default_8ch montage (C6, C4, FC4, FC6, F2, Fz, Cz, C2) is
 NOT used by this project.
@@ -27,7 +27,7 @@ def read_montage(path: str | Path = "config/channel_config.json") -> dict[str, A
         "channels": channels,
         "indices": indices,
         "ref_label": str(obj.get("ref_label", "A1")),
-        "gnd_label": str(obj.get("gnd_label", "A1")),
+        "gnd_label": str(obj.get("gnd_label", "A2")),
     }
 
 

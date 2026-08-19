@@ -105,7 +105,7 @@ block 置信度与 logit margin。默认使用多 seed 集成。
 
 - `config/channel_config.json` 是程序唯一读取的 Montage 源，必须与物理连线一致。
   Cz 是记录通道，不能按 BrainSync 说明书默认 REF=Cz。
-  本套电极帽实际为 A1 耳部接地/REF 共用电极，因此 REF=GND=A1（不使用说明书 Fpz）。
+  本套电极帽实际为 REF=A1（耳部参考）、GND=A2（耳部接地）。
   前端会显式构造 BrainSync SDK `ChannelConfig`（不使用 SDK 默认 C6/C4/... Montage）。
   BrainSync GUI 兼容格式见 `config/brainsync_gui_channel_config.json`。
 - 通道 dropout 已按 8 通道空间覆盖风险调低：概率 0.05，且每次最多置零 1 个通道；

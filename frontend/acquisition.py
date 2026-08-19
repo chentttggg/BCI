@@ -33,8 +33,8 @@ class MockAcquirer:
         self._thread: threading.Thread | None = None
         self.callback: ChunkCallback | None = None
         self.channel_config_summary: dict = {
-            "labels": list(channels), "ref_label": "A1", "gnd_label": "A1",
-            "active_mask": 255, "ref_gnd_combined": True, "source": "mock",
+            "labels": list(channels), "ref_label": "A1", "gnd_label": "A2",
+            "active_mask": 255, "ref_gnd_combined": False, "source": "mock",
         }
         self.last_status: dict = {
             "leadoff_status": 255,
