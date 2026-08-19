@@ -16,7 +16,6 @@ import argparse
 import logging
 import sys
 import time
-from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -24,22 +23,11 @@ import numpy as np
 from guess_number.paths import default_channel_config_path
 
 from .acquisition import create_acquirer
-from .channel_config import build_sdk_channel_config
+from .channel_config import build_sdk_channel_config, read_montage
 from .experiment import ExperimentConfig, ExperimentController
 from .lsl_bridge import create_eeg_outlet, create_marker_outlet
 from .mock_eeg import build_stimulus_list
 from .paradigm import Paradigm, ParadigmConfig
-
-
-def _read_channels(path: str | Path) -> tuple[list[str], str, str]:
-    import json
-
-    with open(path, "r", encoding="utf-8") as f:
-        obj = json.load(f)
-    channels = [str(item["label"]) for item in obj["eeg_channels"]]
-    ref = str(obj.get("ref_label", "A1"))
-    gnd = str(obj.get("gnd_label", "A2"))
-    return channels, ref, gnd
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -53,7 +41,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--session", default="001")
     p.add_argument("--run", default="001")
     p.add_argument("--target", type=int, required=True, choices=range(1, 10))
-    p.add_argument("--sfreq", type=int, default=500, choices=[250, 500, 1000, 2000, 4000, 8000])
+    p.add_argument("--sfreq", type=int, default=250, choices=[250],
+                    help="当前硬件仅保留 250 Hz")
     p.add_argument("--gain", default="Gain24")
     p.add_argument("--blocks", type=int, default=6)
     p.add_argument("--repetitions", type=int, default=5)
@@ -98,7 +87,8 @@ def _post_session_predict(paths, args: argparse.Namespace) -> None:
 
 
 def _run_headless(args: argparse.Namespace) -> int:
-    channels, ref, gnd = _read_channels(args.channel_config)
+    montage = read_montage(args.channel_config)
+    channels, ref, gnd = montage["channels"], montage["ref_label"], montage["gnd_label"]
     cfg = ExperimentConfig(
         participant_id=args.subject, session_id=args.session, run_id=args.run,
         target_number=args.target, sfreq=args.sfreq, gain=args.gain,
@@ -120,7 +110,7 @@ def _run_headless(args: argparse.Namespace) -> int:
     )
     paradigm = Paradigm(paradigm_cfg)
     stimuli = build_stimulus_list(paradigm.schedule_records(), args.sfreq)
-    sdk_channel_config = build_sdk_channel_config(args.channel_config)
+    sdk_channel_config = None if args.mock else build_sdk_channel_config(args.channel_config)
     acquirer = create_acquirer(cfg.acquisition_mode, args.sfreq, channels, stimuli,
                                args.target, seed=args.seed,
                                sdk_channel_config=sdk_channel_config,
@@ -164,7 +154,8 @@ def _run_gui(args: argparse.Namespace) -> int:
         print(f"Import error: {exc}", file=sys.stderr)
         return 3
 
-    channels, ref, gnd = _read_channels(args.channel_config)
+    montage = read_montage(args.channel_config)
+    channels, ref, gnd = montage["channels"], montage["ref_label"], montage["gnd_label"]
     cfg = ExperimentConfig(
         participant_id=args.subject, session_id=args.session, run_id=args.run,
         target_number=args.target, sfreq=args.sfreq, gain=args.gain,
@@ -186,7 +177,7 @@ def _run_gui(args: argparse.Namespace) -> int:
     )
     paradigm = Paradigm(paradigm_cfg)
     stimuli = build_stimulus_list(paradigm.schedule_records(), args.sfreq)
-    sdk_channel_config = build_sdk_channel_config(args.channel_config)
+    sdk_channel_config = None if args.mock else build_sdk_channel_config(args.channel_config)
     acquirer = create_acquirer(cfg.acquisition_mode, args.sfreq, channels, stimuli,
                                args.target, seed=args.seed,
                                sdk_channel_config=sdk_channel_config,

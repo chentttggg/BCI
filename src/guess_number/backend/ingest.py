@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import argparse
 
-from guess_number.paths import (default_channel_config_path, default_preprocess_config_path, default_train_config_path)
+from guess_number.paths import default_channel_config_path, default_preprocess_config_path
 import json
 import logging
 from pathlib import Path
@@ -13,7 +13,7 @@ from typing import Any
 
 from .config import ChannelConfig, PreprocessConfig
 from .io import _read_edf_annotations, load_session
-from .utils import atomic_write_json, configure_logging, sha256_file, utc_now_iso
+from guess_number.utils import atomic_write_json, configure_logging, sha256_file, utc_now_iso
 
 logger = logging.getLogger("backend.ingest")
 
@@ -111,6 +111,31 @@ def validate_sessions(data_dir: str | Path, channel_cfg: ChannelConfig,
             issues = [] if channel_ok else [f"channel labels {actual} != {expected}"]
             if n_events == 0:
                 issues.append("no stim events")
+            sample_rate_ok = bool(abs(session.sfreq - pre_cfg.raw_sfreq) < 0.5)
+            if not sample_rate_ok:
+                issues.append(f"sample rate {session.sfreq} != expected {pre_cfg.raw_sfreq}")
+            paradigm = session.metadata.get("paradigm", {}) if isinstance(session.metadata, dict) else {}
+            if paradigm:
+                try:
+                    expected_stim = int(paradigm["blocks"]) * 9 * int(paradigm["repetitions"])
+                    if n_events and n_events != expected_stim:
+                        issues.append(f"stim_on count {n_events} != paradigm {expected_stim}")
+                except (KeyError, TypeError, ValueError):
+                    pass
+            if n_events and "block" in session.events.columns:
+                try:
+                    for block, grp in session.events.groupby("block", dropna=True):
+                        counts = grp["number"].value_counts().to_dict()
+                        if sorted(counts) != list(range(1, 10)):
+                            issues.append(
+                                f"block {block} digits {sorted(counts)} != 1..9")
+                        elif len(set(counts.values())) != 1:
+                            issues.append(f"block {block} digit counts unbalanced: {counts}")
+                except Exception:
+                    pass
+            if alignment and alignment["median_abs_ms"] > 20.0:
+                issues.append(
+                    f"marker alignment median {alignment['median_abs_ms']:.3f} ms > 20 ms gate")
             issues.extend(raw_qc["issues"])
             report = {
                 "edf": row["relative_path"],
@@ -122,7 +147,7 @@ def validate_sessions(data_dir: str | Path, channel_cfg: ChannelConfig,
                 "target_number": session.target_number,
                 "channel_labels_ok": channel_ok,
                 "expected_sfreq": pre_cfg.raw_sfreq,
-                "sample_rate_ok": bool(abs(session.sfreq - pre_cfg.raw_sfreq) < 0.5),
+                "sample_rate_ok": sample_rate_ok,
                 "raw_channel_qc": raw_qc,
                 "marker_alignment": alignment,
                 "issues": issues,

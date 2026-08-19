@@ -117,7 +117,7 @@ class ModelBundle:
 
     def save(self, directory: str | Path) -> None:
         import torch
-        from .utils import atomic_write_json
+        from guess_number.utils import atomic_write_json
 
         directory = Path(directory)
         directory.mkdir(parents=True, exist_ok=True)
@@ -140,7 +140,7 @@ class ModelBundle:
     @classmethod
     def load(cls, directory: str | Path, map_location: str = "cpu") -> "ModelBundle":
         import torch
-        from .utils import read_json
+        from guess_number.utils import read_json
 
         directory = Path(directory)
         obj = read_json(directory / "bundle.json")

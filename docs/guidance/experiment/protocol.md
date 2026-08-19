@@ -14,7 +14,7 @@
 
 | 参数 | 值 | 说明 |
 | --- | --- | --- |
-| 采样率 | 500 Hz | 原始 EDF 保存；后端可降采样 |
+| 采样率 | 250 Hz | 设备/原始 EDF/模型统一固定 250 Hz |
 | 增益 | Gain24 | 与 SDK 示例一致；以 session.json 为准 |
 | 刺激呈现 | 200 ms | 黑底白字，字体约 15% 屏高 |
 | 空白间隔 | 1300 ms | 使 onset-to-onset = 1500 ms |
@@ -34,6 +34,7 @@
    guess-number-frontend --mock --target 7 --output-dir data/recordings
    # 真实设备
    guess-number-frontend --device --subject P01 --session 001 --target 7 --output-dir data/recordings
+   # 当前设备配置固定 --sfreq 250，程序不接受其他采样率
    ```
 4. 告知受试者规则：默想数字、默数目标出现次数、少眨眼、不动。
 5. 每个 block 结束后查看预测与 ERP 图；建议至少采集 4–6 个 block。

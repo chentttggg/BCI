@@ -1,30 +1,28 @@
 """Researcher-friendly graphical application for the guess-number P300 experiment.
 
-This GUI wraps every operational step that would otherwise be run from the
-command line:
+This GUI is intentionally thin: it handles device checking, experiment setup,
+the stimulus window and researcher interaction.  Heavy backend work
+(ingest / QC / training / prediction) is delegated to a local Python
+interpreter with ``python -m guess_number.backend.main ...`` so the frozen exe
+does not need to bundle MNE / PyTorch / SciPy / scikit-learn / matplotlib.
 
-- device/port check
-- experiment parameter configuration
-- stimulus playback and synchronous EEG acquisition
-- automatic Data/<timestamp> saving
-- subject-guess recording
-- backend ingest / QC report / training / prediction
-
-It is also the entry point used by PyInstaller to build the Windows exe.
+The stimulus surface defaults to a **window** (not a full-screen black screen),
+so the researcher can drag it onto a secondary monitor in Windows extended
+desktop mode.  Full-screen mode is still available from the experiment tab.
 """
 from __future__ import annotations
 
-import contextlib
-import io
 import logging
+import os
+import shutil
+import subprocess
 import sys
 import time
-import traceback
 from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import QThread, QTimer, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QPainter, QPen
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -46,7 +44,7 @@ from PySide6.QtWidgets import (
 )
 
 from guess_number.frontend.acquisition import create_acquirer
-from guess_number.frontend.channel_config import read_montage
+from guess_number.frontend.channel_config import build_sdk_channel_config, read_montage
 from guess_number.frontend.experiment import ExperimentConfig, ExperimentController
 from guess_number.frontend.lsl_bridge import create_eeg_outlet, create_marker_outlet
 from guess_number.frontend.mock_eeg import build_stimulus_list
@@ -66,46 +64,88 @@ def project_root() -> Path:
     return Path(__file__).resolve().parents[3]
 
 
+def find_python_interpreter() -> str:
+    """Find the Python environment used for heavy backend subprocesses.
+
+    Precedence: GUESS_NUMBER_PYTHON -> current interpreter (source mode) ->
+    project-local .venv311 -> PATH python/python3/py -> sys.executable.
+    """
+    env_python = os.environ.get("GUESS_NUMBER_PYTHON")
+    if env_python and Path(env_python).exists():
+        return env_python
+
+    if not getattr(sys, "frozen", False):
+        current = Path(sys.executable)
+        if current.exists():
+            return str(current)
+
+    root = project_root()
+    exe_dir = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else None
+    roots = [root] + ([exe_dir] if exe_dir is not None else [])
+    win_candidates = [
+        ".venv311/Scripts/python.exe", ".venv/Scripts/python.exe", "venv/Scripts/python.exe",
+    ]
+    posix_candidates = [".venv311/bin/python", ".venv/bin/python", "venv/bin/python"]
+    for base in roots:
+        for rel in win_candidates + posix_candidates:
+            candidate = base / rel
+            if candidate.exists():
+                return str(candidate)
+
+    for command in ("python", "python3", "py"):
+        found = shutil.which(command)
+        if found:
+            return found
+    return sys.executable
+
+
 class BackendWorker(QThread):
+    """Run one backend CLI command in a local Python process."""
+
     log = Signal(str)
     done = Signal(int)
 
-    def __init__(self, command: str, argv: list[str]) -> None:
+    def __init__(self, command: str, argv: list[str], python_exe: str) -> None:
         super().__init__()
         self.command = command
-        self.argv = argv
+        self.argv = list(argv)
+        self.python_exe = python_exe
 
     def run(self) -> None:
-        buf = io.StringIO()
-        code = 0
+        root = project_root()
+        env = os.environ.copy()
+        src_dir = root / "src"
+        if src_dir.exists():
+            old_path = env.get("PYTHONPATH", "")
+            env["PYTHONPATH"] = str(src_dir) + (os.pathsep + old_path if old_path else "")
+
+        cmd = [self.python_exe, "-m", "guess_number.backend.main", self.command, *self.argv]
+        self.log.emit("$ " + subprocess.list2cmdline(cmd))
+        kwargs: dict[str, Any] = {
+            "stdout": subprocess.PIPE,
+            "stderr": subprocess.STDOUT,
+            "text": True,
+            "encoding": "utf-8",
+            "errors": "replace",
+            "bufsize": 1,
+            "cwd": str(root),
+            "env": env,
+        }
+        if os.name == "nt" and hasattr(subprocess, "CREATE_NO_WINDOW"):
+            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+
         try:
-            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
-                if self.command == "ingest":
-                    from guess_number.backend.ingest import main
-                    main(self.argv)
-                elif self.command == "report":
-                    from guess_number.backend.qc_report import main
-                    main(self.argv)
-                elif self.command == "train":
-                    from guess_number.backend.train import main
-                    main(self.argv)
-                elif self.command == "predict":
-                    from guess_number.backend.predict import main
-                    main(self.argv)
-                else:
-                    raise ValueError(f"unknown backend command: {self.command}")
-        except SystemExit as exc:
-            code = int(exc.code or 0)
-        except Exception:
-            tb = traceback.format_exc()
-            logger.exception("backend command failed")
-            if tb not in buf.getvalue():
-                buf.write(tb)
-            code = 1
-        text = buf.getvalue()
-        if text:
-            self.log.emit(text)
-        self.done.emit(code)
+            proc = subprocess.Popen(cmd, **kwargs)
+        except Exception as exc:
+            self.log.emit(f"无法启动 Python 后端: {exc}")
+            self.done.emit(1)
+            return
+
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            self.log.emit(line.rstrip("\r\n"))
+        code = proc.wait()
+        self.done.emit(int(code or 0))
 
 
 class DeviceCheckWorker(QThread):
@@ -142,7 +182,8 @@ class DeviceCheckWorker(QThread):
             try:
                 version = await sdk.get_firmware_version(handle)
                 if isinstance(version, dict):
-                    return f"BLE 已连接 {self.ble_name} | {version.get('device_type', 'BrainSync')} "                            f"SW:{version.get('sw_version', 'N/A')}"
+                    return (f"BLE 已连接 {self.ble_name} | {version.get('device_type', 'BrainSync')} "
+                            f"SW:{version.get('sw_version', 'N/A')}")
                 return f"BLE 已连接 {self.ble_name}"
             finally:
                 try:
@@ -154,20 +195,50 @@ class DeviceCheckWorker(QThread):
 
 
 class StimulusWindow(QWidget):
-    """Full-screen black stimulus surface used during the experiment."""
+    """Black stimulus surface shown during the experiment.
+
+    Default mode is a normal top-level window so it can be moved to a second
+    monitor. ``display_mode="fullscreen"`` restores the old full-screen mode.
+    """
 
     stop_requested = Signal()
 
-    def __init__(self) -> None:
+    def __init__(self, display_mode: str = "window", screen_index: int = 0) -> None:
         super().__init__()
+        self.display_mode = "fullscreen" if display_mode == "fullscreen" else "window"
         self.setWindowTitle("Guess Number P300 - Stimulus")
         self.setStyleSheet("background-color: black;")
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.label = QLabel("")
         self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.label.setStyleSheet("color: white; background-color: black;")
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.label)
-        self.showFullScreen()
+
+        self._place_on_screen(screen_index)
+        if self.display_mode == "fullscreen":
+            self.showFullScreen()
+        else:
+            self.show()
+
+    def _screen(self, index: int) -> Any:
+        screens = QApplication.screens() or [QApplication.primaryScreen()]
+        return screens[max(0, min(int(index), len(screens) - 1))]
+
+    def _place_on_screen(self, screen_index: int) -> None:
+        screen = self._screen(screen_index)
+        geometry = screen.availableGeometry()
+        width = max(640, min(1280, int(geometry.width() * 0.78)))
+        height = max(480, min(800, int(geometry.height() * 0.78)))
+        x = geometry.x() + (geometry.width() - width) // 2
+        y = geometry.y() + (geometry.height() - height) // 2
+        self.resize(width, height)
+        self.move(x, y)
+        try:
+            self.setScreen(screen)
+        except Exception:
+            logger.debug("QWidget.setScreen unavailable; falling back to geometry", exc_info=True)
 
     def show_visual(self, text: str | None) -> None:
         if text is None:
@@ -190,14 +261,19 @@ class StimulusWindow(QWidget):
         else:
             super().keyPressEvent(event)
 
+    def closeEvent(self, event: Any) -> None:
+        self.stop_requested.emit()
+        event.accept()
+
 
 class ResearcherWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("Guess Number P300 - Researcher Console")
-        self.resize(1100, 760)
+        self.resize(1100, 780)
         self.controller: ExperimentController | None = None
         self.stimulus: StimulusWindow | None = None
+        self._preview_stimulus: StimulusWindow | None = None
         self.experiment_timer: QTimer | None = None
         self.project_root = project_root()
         self._build_ui()
@@ -214,7 +290,6 @@ class ResearcherWindow(QMainWindow):
         box = QGroupBox(title)
         form = QFormLayout(box)
         return box, form
-
     def _build_experiment_tab(self) -> QWidget:
         widget = QWidget()
         self._experiment_tab = widget
@@ -222,7 +297,6 @@ class ResearcherWindow(QMainWindow):
         self._experiment_layout = root
 
         device_box, device_form = self._group("设备")
-        self.device_box = device_box
         self.cb_mode = QComboBox()
         self.cb_mode.addItems(["真实设备(USB)", "蓝牙设备", "Mock 模拟"])
         self.ed_ble_name = QLineEdit("BrainSync")
@@ -238,14 +312,13 @@ class ResearcherWindow(QMainWindow):
         root.addWidget(device_box)
 
         params_box, params = self._group("实验参数")
-        self.params_box = params_box
         self.ed_subject = QLineEdit("P01")
         self.ed_session = QLineEdit("001")
         self.ed_run = QLineEdit("001")
         self.sp_target = QSpinBox(); self.sp_target.setRange(1, 9); self.sp_target.setValue(7)
         self.sp_blocks = QSpinBox(); self.sp_blocks.setRange(1, 20); self.sp_blocks.setValue(6)
         self.sp_reps = QSpinBox(); self.sp_reps.setRange(1, 20); self.sp_reps.setValue(5)
-        self.sp_sr = QComboBox(); self.sp_sr.addItems(["250", "500", "1000", "2000", "4000", "8000"]); self.sp_sr.setCurrentText("500")
+        self.sp_sr = QComboBox(); self.sp_sr.addItems(["250"]); self.sp_sr.setCurrentText("250")
         self.cb_gain = QComboBox(); self.cb_gain.addItems(["Gain1", "Gain2", "Gain4", "Gain6", "Gain8", "Gain12", "Gain24"]); self.cb_gain.setCurrentText("Gain24")
         self.sp_stim_ms = QSpinBox(); self.sp_stim_ms.setRange(50, 1000); self.sp_stim_ms.setValue(200)
         self.sp_blank_ms = QSpinBox(); self.sp_blank_ms.setRange(100, 5000); self.sp_blank_ms.setValue(1300)
@@ -272,10 +345,23 @@ class ResearcherWindow(QMainWindow):
         self.lbl_duration.setStyleSheet("color:#00ffcc;font-weight:bold;")
         params.addRow("预计实验时长", self.lbl_duration)
         for name in ["sp_blocks", "sp_reps", "sp_stim_ms", "sp_blank_ms", "sp_baseline_ms"]:
-            widget = getattr(self, name)
-            widget.valueChanged.connect(lambda _value, w=widget: self._update_estimated_duration())
+            field = getattr(self, name)
+            field.valueChanged.connect(
+                lambda _value, w=field: self._update_estimated_duration())
         root.addWidget(params_box)
         self._update_estimated_duration()
+
+        display_box, display_form = self._group("刺激显示")
+        self.cb_display_mode = QComboBox()
+        self.cb_display_mode.addItems(["窗口（可拖到扩展屏第二屏）", "全屏"])
+        self.cb_screen = QComboBox()
+        self._refresh_screen_list()
+        self.btn_preview = QPushButton("预览/定位刺激窗口")
+        self.btn_preview.clicked.connect(self.preview_stimulus)
+        display_form.addRow("显示模式", self.cb_display_mode)
+        display_form.addRow("目标屏幕", self.cb_screen)
+        display_form.addRow("", self.btn_preview)
+        root.addWidget(display_box)
 
         ctrl = QHBoxLayout()
         self.btn_start = QPushButton("开始实验")
@@ -294,12 +380,10 @@ class ResearcherWindow(QMainWindow):
         self.log_widget.setMaximumBlockCount(5000)
         root.addWidget(self.log_widget, 1)
         return widget
-
     def _build_backend_tab(self) -> QWidget:
         widget = QWidget()
         self._backend_tab = widget
         root = QVBoxLayout(widget)
-        self._backend_layout = root
         box, form = self._group("后端处理")
         self.ed_data_dir = QLineEdit(str(self.project_root / "data" / "raw"))
         btn_data = QPushButton("选择...")
@@ -316,6 +400,12 @@ class ResearcherWindow(QMainWindow):
         btn_edf.clicked.connect(self.choose_edf)
         edf_row = QHBoxLayout(); edf_row.addWidget(self.ed_predict_edf); edf_row.addWidget(btn_edf)
         form.addRow("预测 EDF", edf_row)
+        self.ed_python = QLineEdit(find_python_interpreter())
+        btn_python = QPushButton("选择...")
+        btn_python.clicked.connect(self.choose_python)
+        python_row = QHBoxLayout(); python_row.addWidget(self.ed_python); python_row.addWidget(btn_python)
+        form.addRow("Python 解释器", python_row)
+        form.addRow("", QLabel("后端（完整性/QC/训练/预测）会在该 Python 环境中运行，exe 不打包 torch/mne"))
         root.addWidget(box)
 
         buttons = QHBoxLayout()
@@ -334,9 +424,19 @@ class ResearcherWindow(QMainWindow):
         self.backend_log.setMaximumBlockCount(5000)
         root.addWidget(self.backend_log, 1)
         return widget
-
     def _log(self, text: str) -> None:
         self.log_widget.appendPlainText(text)
+
+    def _refresh_screen_list(self) -> None:
+        current = self.cb_screen.currentIndex()
+        screens = QApplication.screens() or [QApplication.primaryScreen()]
+        self.cb_screen.clear()
+        for i, screen in enumerate(screens, 1):
+            geo = screen.geometry()
+            self.cb_screen.addItem(
+                f"屏幕 {i}: {screen.name()} ({geo.width()}x{geo.height()})")
+        if screens:
+            self.cb_screen.setCurrentIndex(max(0, min(current, len(screens) - 1)))
 
     def choose_output_dir(self) -> None:
         path = QFileDialog.getExistingDirectory(self, "选择数据目录", self.ed_output.text())
@@ -353,6 +453,13 @@ class ResearcherWindow(QMainWindow):
         if path:
             self.ed_predict_edf.setText(path)
 
+    def choose_python(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self, "选择 Python 解释器", self.ed_python.text(),
+            "Python (*.exe python python3);;All Files (*)")
+        if path:
+            self.ed_python.setText(path)
+
     def check_device(self) -> None:
         mode = "ble" if self.cb_mode.currentIndex() == 1 else "usb"
         ble_name = self.ed_ble_name.text().strip() or "BrainSync"
@@ -360,7 +467,6 @@ class ResearcherWindow(QMainWindow):
         self._device_check = DeviceCheckWorker(mode, ble_name)
         self._device_check.result.connect(self.lbl_device.setText)
         self._device_check.start()
-
     def _update_estimated_duration(self) -> None:
         blocks = int(self.sp_blocks.value())
         reps = int(self.sp_reps.value())
@@ -399,6 +505,8 @@ class ResearcherWindow(QMainWindow):
             acquisition_mode=("device" if self.cb_mode.currentIndex() == 0
                               else "ble" if self.cb_mode.currentIndex() == 1 else "mock"),
             output_dir=self.ed_output.text().strip() or str(Path.cwd() / "data" / "recordings"),
+            display_mode="fullscreen" if self.cb_display_mode.currentIndex() == 1 else "window",
+            display_screen=int(self.cb_screen.currentIndex()),
         )
         pcfg = ParadigmConfig(
             blocks=int(self.sp_blocks.value()),
@@ -413,24 +521,39 @@ class ResearcherWindow(QMainWindow):
             seed=0,
         )
         return cfg, pcfg
+    def preview_stimulus(self) -> None:
+        if self._preview_stimulus is not None:
+            self._preview_stimulus.close()
+        mode = "fullscreen" if self.cb_display_mode.currentIndex() == 1 else "window"
+        preview = StimulusWindow(display_mode=mode, screen_index=int(self.cb_screen.currentIndex()))
+        preview.setWindowTitle("Guess Number P300 - 刺激窗口预览")
+        preview.show_visual("7")
+        self._preview_stimulus = preview
 
     def start_experiment(self) -> None:
         if self.controller is not None and not self.controller.finished:
             QMessageBox.information(self, "提示", "实验已经在运行中")
             return
+        if self._preview_stimulus is not None:
+            self._preview_stimulus.close()
+            self._preview_stimulus = None
         try:
             cfg, pcfg = self._experiment_config()
             paradigm = Paradigm(pcfg)
             stimuli = build_stimulus_list(paradigm.schedule_records(), cfg.sfreq)
-            if cfg.acquisition_mode == "ble" and cfg.sfreq > 1000:
-                raise ValueError("蓝牙模式最高只支持 1000 Hz，请把采样率改为 250/500/1000")
-            acquirer = create_acquirer(cfg.acquisition_mode, cfg.sfreq, cfg.channels,
-                                       stimuli, cfg.target_number, seed=0,
-                                       ble_name=self.ed_ble_name.text().strip() or "BrainSync")
+            # D-006: explicit project ChannelConfig must be sent to the SDK.
+            sdk_channel_config = (None if cfg.acquisition_mode == "mock"
+                                  else build_sdk_channel_config())
+            acquirer = create_acquirer(
+                cfg.acquisition_mode, cfg.sfreq, cfg.channels, stimuli, cfg.target_number,
+                seed=0,
+                sdk_channel_config=sdk_channel_config,
+                ble_name=self.ed_ble_name.text().strip() or "BrainSync")
             marker_outlet = create_marker_outlet()
             eeg_outlet = create_eeg_outlet(cfg.sfreq, cfg.channels)
             controller = ExperimentController(cfg, paradigm, acquirer, marker_outlet, eeg_outlet)
-            stimulus = StimulusWindow()
+            stimulus = StimulusWindow(display_mode=cfg.display_mode,
+                                      screen_index=cfg.display_screen)
             controller.visual_callback = stimulus.show_visual
             stimulus.stop_requested.connect(lambda: controller.stop("user_escape"))
             self.controller = controller
@@ -476,7 +599,6 @@ class ResearcherWindow(QMainWindow):
                 self.controller.record_subject_guess(int(guess))
             self._log(f"实验完成，文件位于: {self.controller.run_dir}")
             self.controller = None
-
     def run_backend(self, command: str) -> None:
         data_dir = self.ed_data_dir.text().strip()
         model_dir = self.ed_model_dir.text().strip()
@@ -496,8 +618,13 @@ class ResearcherWindow(QMainWindow):
             argv = ["--edf", edf, "--model-dir", model_dir]
         else:
             return
+        python_exe = self.ed_python.text().strip() or find_python_interpreter()
+        self.ed_python.setText(python_exe)
+        if not Path(python_exe).exists() and not shutil.which(python_exe):
+            QMessageBox.warning(self, "提示", f"找不到 Python 解释器: {python_exe}")
+            return
         self.backend_log.appendPlainText(f"$ guess-number-backend {command} " + " ".join(argv))
-        self.worker = BackendWorker(command, argv)
+        self.worker = BackendWorker(command, argv, python_exe)
         self.worker.log.connect(self.backend_log.appendPlainText)
         self.worker.done.connect(lambda code: self.backend_log.appendPlainText(f"[exit={code}]"))
         self.worker.start()

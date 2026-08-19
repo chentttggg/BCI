@@ -1,13 +1,12 @@
 """Project dataclasses and JSON config loading."""
 from __future__ import annotations
 
-import json
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .utils import read_json
-from ..paths import default_preprocess_config_path, default_train_config_path
+from guess_number.utils import read_json
+from guess_number.paths import default_preprocess_config_path, default_train_config_path
 
 
 @dataclass
@@ -31,7 +30,7 @@ class ChannelConfig:
 
 @dataclass
 class PreprocessConfig:
-    raw_sfreq: float = 500.0
+    raw_sfreq: float = 250.0
     downsample_sfreq: float = 250.0
     highpass_hz: float = 0.5
     lowpass_hz: float = 20.0
@@ -134,5 +133,5 @@ def load_configs(preprocess_path: str | Path | None = None,
 
 
 def save_json_config(path: str | Path, obj: Any) -> None:
-    from .utils import atomic_write_json
+    from guess_number.utils import atomic_write_json
     atomic_write_json(path, obj)

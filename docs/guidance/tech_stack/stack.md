@@ -4,6 +4,9 @@
 
 - Python 3.10+（推荐 3.10/3.11；若使用本机 3.14 需确认依赖 wheel 可用）。
 - 虚拟环境隔离：`.venv`；依赖锁定 `requirements.lock`（若生成）。
+- 依赖分两层：`pip install -e .[dev,backend]` 安装全部科学计算栈；
+  仅跑 exe/采集前端时只需核心依赖（PySide6/numpy/pyedflib/pylsl/SDK）。
+  exe 不打包 MNE/torch/scipy/pandas/sklearn/matplotlib（D-013）。
 - Git 管理代码、配置、文档；原始数据不入库，仅记录清单与哈希。
 
 ## 2. 核心库
@@ -54,7 +57,7 @@ data/
 - 每个 block：9 个数字 × R 次重复（默认 R=5，45 试次），随机但保证每个数字出现次数相等。
 - 事件：每个刺激发送 `stim_on/{number}`、`stim_off/{number}` LSL marker，同时写
   EDF annotation 与 `events.jsonl`（记录 LSL 时间戳、单调时间、预期 onset）。
-- 采集：500 Hz（推荐；后端可降采样到 250 Hz）；增益按 SDK 示例 Gain24；
+- 采集：固定 250 Hz（当前设备配置；D-015）；增益按 SDK 示例 Gain24；
   原始数据不进行任何软件滤波。在线显示滤波与离线滤波参数分开记录。
 - 真实设备可用 SDK 的 EDF 录制；mock 模式用 pyedflib 生成 EDF+。
 

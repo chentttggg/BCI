@@ -1,21 +1,34 @@
 # -*- mode: python ; coding: utf-8 -*-
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_submodules
-
 project_root = Path(SPECPATH).parent
 src_dir = project_root / "src"
 config_dir = src_dir / "guess_number" / "config"
 entry_script = src_dir / "guess_number" / "gui" / "researcher.py"
 
-hiddenimports = collect_submodules("guess_number")
-# MNE/PySide6/torch hooks handle their own imports. Keep runtime lean-ish.
+# The exe is intentionally a thin GUI:
+#   * it bundles PySide6 + the lightweight frontend (numpy, pyedflib, pylsl,
+#     brainsync-sdk) so the experiment itself runs from the exe;
+#   * heavy backend modules (MNE, torch, scipy, pandas, scikit-learn,
+#     matplotlib) run in a local Python interpreter via
+#     ``python -m guess_number.backend.main ...`` and are excluded here.
+# Do NOT use collect_submodules("guess_number"): that would drag the backend
+# (torch/mne/scipy/sklearn/matplotlib) back into the frozen app.
+hiddenimports = []
+
 excludes = [
     "tkinter",
     "PyQt5",
     "PyQt6",
     "IPython",
     "jedi",
+    # Heavy scientific stack lives in the external Python environment.
+    "torch",
+    "mne",
+    "sklearn",
+    "scipy",
+    "pandas",
+    "matplotlib",
     "matplotlib.tests",
     "scipy.tests",
     "pandas.tests",

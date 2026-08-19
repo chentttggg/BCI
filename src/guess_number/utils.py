@@ -1,4 +1,9 @@
-"""Shared utilities: hashing, atomic JSON/JSONL IO, logging."""
+"""Shared utilities used by both frontend and backend.
+
+This is the single implementation for hashing, atomic JSON/JSONL IO and logging.
+``guess_number.backend.utils`` and ``guess_number.frontend.utils`` were merged
+here to avoid duplicated (and drifting) copies.
+"""
 from __future__ import annotations
 
 import hashlib

@@ -19,7 +19,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from .utils import read_json
+from guess_number.utils import read_json
 
 _UV_ALIASES = {"uv", "µv", "μv", "microvolt", "microvolts"}
 _MV_ALIASES = {"mv", "millivolt", "millivolts"}
@@ -124,7 +124,13 @@ def _read_edf_annotations(path: str | Path) -> pd.DataFrame:
         onsets, durations, descriptions = reader.readAnnotations()
     rows = []
     for onset, dur, desc in zip(onsets, durations, descriptions):
-        rows.append({"onset_sec": float(onset), "duration_sec": float(dur), "type": str(desc)})
+        # The frontend joins markers that fall into the same 20 ms EDF+ data
+        # record with " | "; expand them back into individual rows here.
+        for part in str(desc).split("|"):
+            part = part.strip()
+            if part:
+                rows.append({"onset_sec": float(onset), "duration_sec": float(dur),
+                             "type": part})
     return pd.DataFrame(rows)
 
 

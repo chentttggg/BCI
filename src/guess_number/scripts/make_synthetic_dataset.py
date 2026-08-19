@@ -21,7 +21,7 @@ import numpy as np
 from guess_number.frontend.mock_eeg import build_stimulus_list, generate_session_data
 from guess_number.frontend.paradigm import Paradigm, ParadigmConfig
 from guess_number.frontend.recorder import RawEDFRecorder
-from guess_number.frontend.utils import append_jsonl, atomic_write_json, sha256_file, utc_now_iso
+from guess_number.utils import append_jsonl, atomic_write_json, sha256_file, utc_now_iso
 
 
 def make_session(output_dir: Path, participant: str, session: str, target: int,
@@ -87,7 +87,7 @@ def make_session(output_dir: Path, participant: str, session: str, target: int,
         "unit": "uV",
         "channels": channels,
         "ref_label": "A1",
-        "gnd_label": "Fpz",
+        "gnd_label": "A2",
         "acquisition_mode": "mock",
         "paradigm": {
             "blocks": blocks, "repetitions": repetitions,
@@ -111,7 +111,7 @@ def main() -> None:
     p.add_argument("--subject", default="P01")
     p.add_argument("--blocks", type=int, default=2)
     p.add_argument("--repetitions", type=int, default=5)
-    p.add_argument("--sfreq", type=int, default=500)
+    p.add_argument("--sfreq", type=int, default=250)
     p.add_argument("--stimulus-ms", type=int, default=200)
     p.add_argument("--blank-ms", type=int, default=1300)
     p.add_argument("--seed", type=int, default=100)

@@ -99,14 +99,14 @@ class MockAcquirer:
 class BrainSyncAcquirer:
     """Real BrainSync BS8A acquirer. Runs the async SDK API in a worker thread."""
 
-    def __init__(self, sfreq: int = 500, gain: str = "Gain24", batch_size: int = 250,
+    def __init__(self, sfreq: int = 250, gain: str = "Gain24", batch_size: int = 250,
                  channels: list[str] | None = None,
                  sdk_channel_config: object | None = None,
                  transport: str = "serial", ble_name: str = "BrainSync") -> None:
         self.transport = transport
         self.ble_name = ble_name
-        if transport == "ble" and int(sfreq) > 1000:
-            raise ValueError("BLE transport supports sample rates <= 1000 Hz")
+        if int(sfreq) != 250:
+            raise ValueError("当前 BrainSync 设备配置只保留 250 Hz")
         self.sfreq = int(sfreq)
         self.gain = gain
         self.sdk_channel_config = sdk_channel_config
@@ -145,8 +145,8 @@ class BrainSyncAcquirer:
     def estimated_sample_count(self, now_monotonic: float) -> int:
         """Interpolate sample index between SDK callbacks.
 
-        Batch size is intentionally small (10 samples at 500 Hz = 20 ms) so this
-        estimate is close even when the SDK batches packets.
+        The 250-sample batch at 250 Hz is 1 second of data; interpolation between
+        callbacks keeps marker sample estimates close when the SDK batches packets.
         """
         with self._lock:
             if self._last_chunk_mono is None:
@@ -179,16 +179,10 @@ class BrainSyncAcquirer:
             "Gain12": brainsync_sdk.EegGain.Gain12,
             "Gain24": brainsync_sdk.EegGain.Gain24,
         }
-        rate_map = {
-            250: brainsync_sdk.EegSampleRate.Hz250,
-            500: brainsync_sdk.EegSampleRate.Hz500,
-            1000: brainsync_sdk.EegSampleRate.Hz1000,
-            2000: brainsync_sdk.EegSampleRate.Hz2000,
-            4000: brainsync_sdk.EegSampleRate.Hz4000,
-            8000: brainsync_sdk.EegSampleRate.Hz8000,
-        }
+        # D-015: the current device setup is fixed to 250 Hz; higher rates were
+        # removed from the frontend and from this SDK mapping.
+        rate_enum = brainsync_sdk.EegSampleRate.Hz250
         gain_enum = gain_map.get(self.gain, brainsync_sdk.EegGain.Gain24)
-        rate_enum = rate_map.get(self.sfreq, brainsync_sdk.EegSampleRate.Hz500)
 
         if self.transport == "ble":
             logger.info("Opening BrainSync via BLE (name=%s)", self.ble_name)

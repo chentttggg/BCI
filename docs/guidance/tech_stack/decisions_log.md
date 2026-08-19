@@ -175,3 +175,58 @@
   4. CLI 新增 `--baseline-black-ms`（默认 2000）。
 - 影响范围：frontend/paradigm.py、experiment.py、main.py；
   scripts/make_synthetic_dataset.py。
+
+## D-013 研究员 exe 轻量化：后端下放给本地 Python
+
+- 日期：2026-08-19
+- 变更者：EEG 分析工程师（agent）
+- 变更理由：`dist/GuessNumberResearcher.exe` 约 253 MB，原因是通过
+  `collect_submodules("guess_number")` 把 MNE/PyTorch/SciPy/pandas/
+  scikit-learn/matplotlib 全部打进了 exe。这些库用于后端处理，与
+  Qt 图形界面和实时采集无关。
+- 变更内容：
+  1. exe 只保留 PySide6 + numpy + pyedflib + pylsl + BrainSync SDK；
+  2. GUI 的 ingest/report/train/predict 改为启动本地 Python 解释器执行
+     `python -m guess_number.backend.main ...`，并在 GUI 中可选择解释器；
+  3. 删除 `collect_submodules("guess_number")`，spec 中显式排除
+     torch/mne/scipy/pandas/sklearn/matplotlib；
+  4. mock EEG 的合成滤波改为纯 numpy FFT，避免仅为 mock 打包 scipy；
+  5. 合并前后端重复的 utils 到 `src/guess_number/utils.py`；
+  6. `backend/main.py` 改为纯 dispatch，各子命令只保留一份 CLI 定义。
+- 影响范围：`packaging/*.spec`、`gui/researcher.py`、`backend/main.py`、
+  `frontend/mock_eeg.py`、`src/guess_number/utils.py`、README。
+- 回滚：恢复 `collect_submodules("guess_number")` 与 BackendWorker 的
+  进程内 import 即可。
+
+## D-014 刺激窗口默认窗口模式，支持扩展屏
+
+- 日期：2026-08-19
+- 变更者：EEG 分析工程师（agent）
+- 变更理由：原实验开始后刺激界面 `showFullScreen()` 覆盖主屏，研究者
+  无法在扩展模式下把测试界面放到第二块屏幕，且主屏被黑屏遮挡。
+- 变更内容：
+  1. `StimulusWindow` 默认 `window` 模式（普通顶级黑底窗口），可拖动；
+  2. 研究员 GUI 增加“刺激显示”设置：窗口/全屏、目标屏幕、预览按钮；
+  3. 显示模式与目标屏幕写入 `session.json` 的 `stimulus_display`；
+  4. 关闭刺激窗口等同于按 Esc 停止实验。
+- 影响范围：`gui/researcher.py`、`frontend/experiment.py`、README。
+- 回滚：将 `StimulusWindow` 构造参数改为 `display_mode="fullscreen"`。
+
+## D-015 设备配置固定 250 Hz，移除更高采样率
+
+- 日期：2026-08-20
+- 变更者：EEG 分析工程师（agent）
+- 变更理由：用户确认当前设备原因只保留 250 Hz；500/1000/2000/4000/8000 Hz
+  选项在实际采集中不可用，保留它们只会增加误操作与配置漂移。
+- 变更内容：
+  1. 前端 CLI `--sfreq` 仅接受 250（默认 250）；
+  2. 研究员 GUI 采样率下拉框仅保留 250；
+  3. `BrainSyncAcquirer` 只映射 `EegSampleRate.Hz250`，非 250 直接报错；
+  4. `preprocessing.json`/`PreprocessConfig` 默认 `raw_sfreq=250`，
+     `downsample_sfreq=250`；
+  5. 合成数据脚本默认 250 Hz；
+  6. README、协议、质量门禁与路线图同步更新。
+- 影响范围：frontend/main.py、acquisition.py、experiment.py；gui/researcher.py；
+  backend/config.py、config/preprocessing.json；scripts/make_synthetic_dataset.py；
+  文档。
+- 回滚：恢复 CLI choices 与 SDK rate_map，并把配置默认值改回 500。

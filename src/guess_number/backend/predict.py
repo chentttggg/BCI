@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import argparse
 
-from guess_number.paths import (default_channel_config_path, default_preprocess_config_path, default_train_config_path)
+from guess_number.paths import default_channel_config_path
 import json
 import logging
 from pathlib import Path
@@ -17,7 +17,7 @@ from .io import load_session
 from .model import ModelBundle
 from .preprocess import prepare_session
 from .scoring import aggregate_number_scores, block_predictions
-from .utils import atomic_write_json, configure_logging, sha256_file, utc_now_iso
+from guess_number.utils import atomic_write_json, configure_logging, sha256_file, utc_now_iso
 
 logger = logging.getLogger("backend.predict")
 

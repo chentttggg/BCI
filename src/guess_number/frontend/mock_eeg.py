@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from scipy import signal
 
 
 @dataclass
@@ -18,12 +17,37 @@ class Stimulus:
     trial: int
 
 
+def _bandpass_numpy(data: np.ndarray, sfreq: int, low_hz: float, high_hz: float) -> np.ndarray:
+    """Lightweight FFT band-pass used only by the mock EEG generator.
+
+    The real preprocessing pipeline is in ``backend.preprocess``.  Keeping this
+    helper numpy-only means the researcher exe does not need to bundle SciPy
+    just to support ``--mock`` self-tests.
+    """
+    n = data.shape[-1]
+    freqs = np.fft.rfftfreq(n, d=1.0 / sfreq)
+    spectrum = np.fft.rfft(data, axis=-1)
+    response = np.zeros_like(freqs)
+    # Raised-cosine edges avoid ringing while giving a simple 0.5-40 Hz band.
+    lo_start, lo_stop = max(0.1, low_hz * 0.5), max(0.2, low_hz)
+    hi_start, hi_stop = min(high_hz, sfreq * 0.45), min(sfreq * 0.49, high_hz * 1.15)
+    for i, f in enumerate(freqs):
+        if f < lo_start or f > hi_stop:
+            response[i] = 0.0
+        elif f < lo_stop:
+            response[i] = 0.5 - 0.5 * np.cos(np.pi * (f - lo_start) / max(1e-9, lo_stop - lo_start))
+        elif f > hi_start:
+            response[i] = 0.5 + 0.5 * np.cos(np.pi * (f - hi_start) / max(1e-9, hi_stop - hi_start))
+        else:
+            response[i] = 1.0
+    return np.fft.irfft(spectrum * response[None, :], n=n, axis=-1)
+
+
 def _make_background_noise(n_samples: int, sfreq: int, n_channels: int,
                            seed: int) -> np.ndarray:
     rng = np.random.default_rng(seed)
     white = rng.standard_normal((n_channels, n_samples))
-    sos = signal.butter(4, [0.5, 40.0], btype="bandpass", fs=sfreq, output="sos")
-    noise = signal.sosfiltfilt(sos, white, axis=-1)
+    noise = _bandpass_numpy(white, sfreq, 0.5, 40.0)
     # A few microvolts of slow, spatially coherent drift.
     t = np.arange(n_samples) / sfreq
     drift = 8.0 * np.sin(2 * np.pi * 0.08 * t + rng.uniform(0, 2 * np.pi, size=(n_channels, 1)))

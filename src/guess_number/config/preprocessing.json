@@ -1,5 +1,5 @@
 {
-  "raw_sfreq": 500.0,
+  "raw_sfreq": 250.0,
   "downsample_sfreq": 250.0,
   "highpass_hz": 0.5,
   "lowpass_hz": 20.0,

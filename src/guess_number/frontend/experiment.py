@@ -13,7 +13,7 @@ import numpy as np
 
 from .paradigm import Paradigm, TimelineEvent, TimelineRunner
 from .recorder import RawEDFRecorder
-from .utils import append_jsonl, atomic_write_json, sha256_file, utc_now_iso
+from guess_number.utils import append_jsonl, atomic_write_json, sha256_file, utc_now_iso
 
 logger = logging.getLogger("frontend.experiment")
 
@@ -36,7 +36,7 @@ class ExperimentConfig:
     session_id: str = "001"
     run_id: str = "001"
     target_number: int = 7
-    sfreq: int = 500
+    sfreq: int = 250
     gain: str = "Gain24"
     unit: str = "uV"
     channels: list[str] = field(default_factory=lambda: ["Fz", "Cz", "P3", "Pz", "P4", "PO7", "PO8", "Oz"])
@@ -46,6 +46,8 @@ class ExperimentConfig:
     output_dir: str | Path = "Data"
     seed: int = 0
     subject_guess: int | None = None
+    display_mode: str = "window"
+    display_screen: int = 0
 
 
 @dataclass
@@ -136,6 +138,10 @@ class ExperimentController:
             },
             "created_utc": utc_now_iso(),
             "git_commit": git_commit_short(),
+            "stimulus_display": {
+                "mode": self.cfg.display_mode,
+                "screen_index": int(self.cfg.display_screen or 0),
+            },
             "run_dir": str(self.run_dir),
             "started_at_local": self.started_at_local,
             "subject_guess": self.cfg.subject_guess,
@@ -156,25 +162,6 @@ class ExperimentController:
         self._push_marker(f"target/{self.cfg.target_number}")
         self._set_visual(None)
         self._update_status("RUNNING")
-
-    def _start_acquisition(self, event: TimelineEvent) -> None:
-        if self._acquisition_started:
-            return
-        self._sample_count_at_start = int(self.acquirer.sample_count)
-        # Mock stream must jump to the current timeline position because it has
-        # pre-generated the whole session. Real device starts at its live cursor.
-        start_sample = int(round(event.time_sec * self.cfg.sfreq))
-        try:
-            self.acquirer.start(self._on_eeg_chunk, start_sample=start_sample)
-        except TypeError:
-            self.acquirer.start(self._on_eeg_chunk)
-        if self.cfg.acquisition_mode == "mock":
-            # Mock raw data was pre-generated for the whole timeline; the local
-            # recording starts at `start_sample`, so that is the new zero point.
-            self._sample_count_at_start = start_sample
-        self._acquisition_started = True
-        logger.info("Acquisition started at first digit (timeline %.3fs, sample %d)",
-                    event.time_sec, start_sample)
 
     def _on_eeg_chunk(self, samples: np.ndarray, start_sample: int) -> None:
         try:
@@ -262,9 +249,11 @@ class ExperimentController:
 
     def _write_edf_segment(self, path: Path, data: np.ndarray) -> None:
         from pyedflib import highlevel
+        from .recorder import _physical_bounds
+        phys_lo, phys_hi = _physical_bounds(data)
         headers = [highlevel.make_signal_header(
             label=label, dimension="uV", sample_frequency=float(self.cfg.sfreq),
-            physical_min=-2000.0, physical_max=2000.0) for label in self.cfg.channels]
+            physical_min=phys_lo, physical_max=phys_hi) for label in self.cfg.channels]
         highlevel.write_edf(str(path), data, headers,
                             file_type=1)  # EDF+
 

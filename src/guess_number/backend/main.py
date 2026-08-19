@@ -1,91 +1,57 @@
 """Backend entry point.
 
-Usage:
-    python -m backend.main ingest  --data-dir data/raw
-    python -m backend.main train   --data-dir data/raw --cv --production
-    python -m backend.main predict --edf data/raw/sub-..._eeg.edf --model-dir data/derived/models/guess_number
+The researcher exe delegates heavy backend work to a local Python interpreter:
+
+    python -m guess_number.backend.main ingest  --data-dir data/raw
+    python -m guess_number.backend.main train   --data-dir data/raw --cv --production
+    python -m guess_number.backend.main predict --edf data/raw/sub-..._eeg.edf \
+        --model-dir data/derived/models/guess_number
+    python -m guess_number.backend.main report  --data-dir data/raw
+
+Each subcommand owns its argument parser, so there is only one CLI definition
+per command (ingest.py, train.py, predict.py, qc_report.py).
 """
 from __future__ import annotations
 
-import argparse
 import sys
+from importlib import import_module
 
-from guess_number.paths import (default_channel_config_path, default_preprocess_config_path, default_train_config_path)
+_COMMANDS = ("ingest", "train", "predict", "report")
 
 
-def main() -> None:
-    p = argparse.ArgumentParser(prog="guess-number-backend",
-                                description="Guess-number P300 backend processing")
-    sub = p.add_subparsers(dest="command", required=True)
+def _subcommand_module(command: str) -> str:
+    return {
+        "ingest": "guess_number.backend.ingest",
+        "train": "guess_number.backend.train",
+        "predict": "guess_number.backend.predict",
+        "report": "guess_number.backend.qc_report",
+    }[command]
 
-    ingest = sub.add_parser("ingest", help="raw data inventory and integrity check")
-    ingest.add_argument("--data-dir", default="data/raw")
-    ingest.add_argument("--manifest", default="data/manifest.jsonl")
-    ingest.add_argument("--channel-config", default=default_channel_config_path())
-    ingest.add_argument("--preprocess-config", default=default_preprocess_config_path())
 
-    train = sub.add_parser("train", help="train ShallowConvNet ensemble")
-    train.add_argument("--data-dir", default="data/raw")
-    train.add_argument("--output-dir", default="data/derived/models/guess_number")
-    train.add_argument("--preprocess-config", default=default_preprocess_config_path())
-    train.add_argument("--train-config", default=default_train_config_path())
-    train.add_argument("--channel-config", default=default_channel_config_path())
-    train.add_argument("--cv", action="store_true")
-    train.add_argument("--no-cv", action="store_false", dest="cv")
-    train.add_argument("--production", action="store_true")
-    train.add_argument("--no-production", action="store_false", dest="production")
-    train.add_argument("--log-file", default=None)
+def _print_help() -> None:
+    print("""usage: guess-number-backend {ingest,train,predict,report} ...
 
-    predict = sub.add_parser("predict", help="predict the thought number")
-    predict.add_argument("--edf", required=True)
-    predict.add_argument("--events", default=None)
-    predict.add_argument("--session-json", default=None)
-    predict.add_argument("--model-dir", required=True)
-    predict.add_argument("--channel-config", default=default_channel_config_path())
-    predict.add_argument("--output-json", default=None)
-    predict.add_argument("--log-file", default=None)
+commands:
+  ingest   raw data inventory / SHA-256 / channel and marker QC
+  report   generate per-session QC HTML/PNG/JSON
+  train    prepare data and train the ShallowConvNet ensemble
+  predict  predict the thought number for one EDF session
 
-    report = sub.add_parser("report", help="generate per-session QC report")
-    report.add_argument("--data-dir", default=None)
-    report.add_argument("--edf", default=None)
-    report.add_argument("--output-dir", default="data/derived/reports")
-    report.add_argument("--channel-config", default=default_channel_config_path())
-    report.add_argument("--preprocess-config", default=default_preprocess_config_path())
+Run `guess-number-backend <command> --help` for command options.""")
 
-    args = p.parse_args()
-    if args.command == "ingest":
-        from .ingest import main as ingest_main
-        sys.exit(ingest_main(["--data-dir", args.data_dir, "--manifest", args.manifest,
-                              "--channel-config", args.channel_config,
-                              "--preprocess-config", args.preprocess_config]))
-    if args.command == "train":
-        from .train import main as train_main
-        sys.exit(train_main(["--data-dir", args.data_dir, "--output-dir", args.output_dir,
-                             "--preprocess-config", args.preprocess_config,
-                             "--train-config", args.train_config,
-                             "--channel-config", args.channel_config,
-                             "--cv" if args.cv else "--no-cv",
-                             "--production" if args.production else "--no-production",
-                             *(["--log-file", args.log_file] if args.log_file else [])]))
-    if args.command == "predict":
-        from .predict import main as predict_main
-        sys.exit(predict_main(["--edf", args.edf,
-                               *(["--events", args.events] if args.events else []),
-                               *(["--session-json", args.session_json] if args.session_json else []),
-                               "--model-dir", args.model_dir,
-                               "--channel-config", args.channel_config,
-                               *(["--output-json", args.output_json] if args.output_json else []),
-                               *(["--log-file", args.log_file] if args.log_file else [])]))
-    if args.command == "report":
-        from .qc_report import main as report_main
-        argv = ["--output-dir", args.output_dir,
-                "--channel-config", args.channel_config,
-                "--preprocess-config", args.preprocess_config]
-        if args.edf:
-            argv += ["--edf", args.edf]
-        if args.data_dir:
-            argv += ["--data-dir", args.data_dir]
-        sys.exit(report_main(argv))
+
+def main(argv: list[str] | None = None) -> None:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if not argv or argv[0] in ("-h", "--help"):
+        _print_help()
+        raise SystemExit(0 if argv else 1)
+    command, *sub_args = argv
+    if command not in _COMMANDS:
+        _print_help()
+        raise SystemExit(2)
+    module = import_module(_subcommand_module(command))
+    code = module.main(sub_args)
+    raise SystemExit(0 if code is None else int(code))
 
 
 if __name__ == "__main__":

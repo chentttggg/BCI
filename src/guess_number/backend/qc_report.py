@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import argparse
 
-from guess_number.paths import (default_channel_config_path, default_preprocess_config_path, default_train_config_path)
+from guess_number.paths import default_channel_config_path, default_preprocess_config_path
 import json
 import logging
 from pathlib import Path
@@ -16,7 +16,7 @@ from scipy import signal as scipy_signal
 from .config import ChannelConfig, PreprocessConfig
 from .io import load_session
 from .preprocess import prepare_session, preprocess_continuous
-from .utils import atomic_write_json, configure_logging, sha256_file, utc_now_iso
+from guess_number.utils import atomic_write_json, configure_logging, sha256_file, utc_now_iso
 
 logger = logging.getLogger("backend.qc")
 

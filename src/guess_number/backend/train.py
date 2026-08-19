@@ -20,7 +20,7 @@ from .io import load_session
 from .model import ModelBundle, build_shallow_convnet
 from .preprocess import prepare_session
 from .scoring import aggregate_number_scores, binary_metrics, block_predictions
-from .utils import atomic_write_json, configure_logging, sha256_file, utc_now_iso
+from guess_number.utils import atomic_write_json, configure_logging, sha256_file, utc_now_iso
 from .xdawn import XdawnProjector
 
 logger = logging.getLogger("backend.train")

@@ -310,7 +310,7 @@ def _continuous_bad_channel(data: np.ndarray, max_abs: float = 500.0,
 
 def save_prepared_cache(path: str | Path, X: np.ndarray, meta: pd.DataFrame,
                         sidecar: dict[str, Any]) -> None:
-    from .utils import atomic_write_json
+    from guess_number.utils import atomic_write_json
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     np.save(path.with_suffix(".npy"), X.astype(np.float32))

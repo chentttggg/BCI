@@ -169,3 +169,54 @@ def test_edf_writer_preserves_all_annotations(tmp_path: Path) -> None:
     ann = _read_edf_annotations(tmp_path / "many_ann.edf")
     assert len(ann) == 20
     assert ann.iloc[-1]["type"] == "stim_on/2"
+
+
+def test_edf_writer_does_not_pad_midstream_annotations(tmp_path: Path) -> None:
+    """Regression: one writeSamples chunk per annotation used to inflate 10 s
+    of data to 40 s because pyedflib pads every call to a full data record."""
+    from guess_number.backend.io import _read_edf_annotations, load_session
+    from guess_number.frontend.recorder import RawEDFRecorder
+
+    rec = RawEDFRecorder(tmp_path / "no_mid_pad.edf", 250.0,
+                         ["Fz", "Cz", "P3", "Pz", "P4", "PO7", "PO8", "Oz"],
+                         participant_id="P01", session_id="001")
+    n_source = 2727
+    rec.write(np.zeros((8, n_source), dtype=np.float32))
+    for i in range(20):
+        rec.add_annotation(i * 0.1, 0.0, f"stim_on/{i % 9 + 1}")
+    rec.close()
+    session = load_session(tmp_path / "no_mid_pad.edf")
+    assert session.raw.shape[1] <= n_source + 10
+    ann = _read_edf_annotations(tmp_path / "no_mid_pad.edf")
+    assert (ann["type"].str.startswith("stim_on")).sum() == 20
+
+
+def test_backend_dispatch_ingest(tmp_path: Path) -> None:
+    from guess_number.backend.main import main
+
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    manifest = tmp_path / "manifest.jsonl"
+    with pytest.raises(SystemExit) as excinfo:
+        main(["ingest", "--data-dir", str(raw_dir), "--manifest", str(manifest)])
+    assert excinfo.value.code == 0
+    assert manifest.exists()
+
+
+def test_researcher_experiment_tab_returns_widget(monkeypatch) -> None:
+    """Regression: the duration spinbox loop used a local variable named
+    `widget`, which shadowed the tab page and made QTabWidget add a QSpinBox
+    as the whole page (only a `2000` spinner was visible in the exe)."""
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication, QTabWidget, QWidget
+
+    from guess_number.gui.researcher import ResearcherWindow
+
+    app = QApplication.instance() or QApplication([])
+    window = ResearcherWindow()
+    assert isinstance(window.tabs, QTabWidget)
+    assert isinstance(window.tabs.currentWidget(), QWidget)
+    assert window.tabs.currentWidget() is window._experiment_tab
+    assert window.sp_baseline_ms.value() == 2000
+    window.close()
+    app.processEvents()
