@@ -198,6 +198,15 @@ class BrainSyncAcquirer:
         await brainsync_sdk.set_eeg_sample_rate(self.device_handle, rate_enum)
         await brainsync_sdk.set_eeg_gain(self.device_handle, gain_enum)
         await brainsync_sdk.set_eeg_signal_type(self.device_handle, brainsync_sdk.EegSignalType.Normal)
+        try:
+            await brainsync_sdk.set_eeg_signal_types(
+                self.device_handle, [brainsync_sdk.EegSignalType.Normal] * 8)
+        except Exception:
+            logger.debug("per-channel signal type setup skipped", exc_info=True)
+        try:
+            await brainsync_sdk.set_eeg_gains(self.device_handle, [gain_enum] * 8)
+        except Exception:
+            logger.debug("per-channel gain setup skipped", exc_info=True)
         await brainsync_sdk.clear_receive_buffer(self.device_handle)
         # Dry electrodes benefit from lead-off monitoring. The SDK may reject these
         # calls on older firmware, so configuration is best-effort and recorded.

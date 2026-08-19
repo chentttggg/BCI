@@ -1773,6 +1773,12 @@ class CompleteSensorGUI(QtWidgets.QMainWindow):
     async def enable_stream_by_name(self, name):
         try:
             if name == "eeg":
+                # Make sure the device is not left in TestSignal/InternalShort mode.
+                try:
+                    await sdk.set_eeg_signal_type(self.handle, sdk.EegSignalType.Normal)
+                    await sdk.set_eeg_signal_types(self.handle, [sdk.EegSignalType.Normal] * 8)
+                except Exception as exc:
+                    self.write_log(f"Normal EEG signal type setup failed: {exc}")
                 await sdk.subscribe_eeg_data(self.handle, 250, self.on_eeg_received)
                 await sdk.set_eeg_transfer(self.handle, True)
                 self.btn_eeg_start.setText(self.tr("btn_eeg_stop"))
@@ -1836,6 +1842,17 @@ class CompleteSensorGUI(QtWidgets.QMainWindow):
 
                 await sdk.set_eeg_sample_rate(self.handle, sr_enums[sr_idx])
                 await sdk.set_eeg_gain(self.handle, gain_enums[gain_idx])
+                # Force every hardware channel back to real EEG input. Some SDK
+                # examples leave per-channel test/short modes behind.
+                await sdk.set_eeg_signal_type(self.handle, sdk.EegSignalType.Normal)
+                try:
+                    await sdk.set_eeg_signal_types(self.handle, [sdk.EegSignalType.Normal] * 8)
+                except Exception as exc:
+                    self.write_log(f"Per-channel signal type skipped: {exc}")
+                try:
+                    await sdk.set_eeg_gains(self.handle, [gain_enums[gain_idx]] * 8)
+                except Exception as exc:
+                    self.write_log(f"Per-channel gain skipped: {exc}")
 
                 self.eeg_fs = sr_vals[sr_idx]
                 self.eeg_filter = SoftwareFilter(fs=self.eeg_fs)
