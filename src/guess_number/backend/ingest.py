@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import argparse
+
+from guess_number.paths import (default_channel_config_path, default_preprocess_config_path, default_train_config_path)
 import json
 import logging
 from pathlib import Path
@@ -136,8 +138,8 @@ def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(description="Raw data inventory and integrity check")
     p.add_argument("--data-dir", default="data/raw")
     p.add_argument("--manifest", default="data/manifest.jsonl")
-    p.add_argument("--channel-config", default="config/channel_config.json")
-    p.add_argument("--preprocess-config", default="config/preprocessing.json")
+    p.add_argument("--channel-config", default=default_channel_config_path())
+    p.add_argument("--preprocess-config", default=default_preprocess_config_path())
     args = p.parse_args(argv)
     configure_logging(logging.INFO)
 

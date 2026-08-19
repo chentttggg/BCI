@@ -10,24 +10,26 @@ from __future__ import annotations
 import argparse
 import sys
 
+from guess_number.paths import (default_channel_config_path, default_preprocess_config_path, default_train_config_path)
+
 
 def main() -> None:
-    p = argparse.ArgumentParser(prog="python -m backend.main",
+    p = argparse.ArgumentParser(prog="guess-number-backend",
                                 description="Guess-number P300 backend processing")
     sub = p.add_subparsers(dest="command", required=True)
 
     ingest = sub.add_parser("ingest", help="raw data inventory and integrity check")
     ingest.add_argument("--data-dir", default="data/raw")
     ingest.add_argument("--manifest", default="data/manifest.jsonl")
-    ingest.add_argument("--channel-config", default="config/channel_config.json")
-    ingest.add_argument("--preprocess-config", default="config/preprocessing.json")
+    ingest.add_argument("--channel-config", default=default_channel_config_path())
+    ingest.add_argument("--preprocess-config", default=default_preprocess_config_path())
 
     train = sub.add_parser("train", help="train ShallowConvNet ensemble")
     train.add_argument("--data-dir", default="data/raw")
     train.add_argument("--output-dir", default="data/derived/models/guess_number")
-    train.add_argument("--preprocess-config", default="config/preprocessing.json")
-    train.add_argument("--train-config", default="config/train.json")
-    train.add_argument("--channel-config", default="config/channel_config.json")
+    train.add_argument("--preprocess-config", default=default_preprocess_config_path())
+    train.add_argument("--train-config", default=default_train_config_path())
+    train.add_argument("--channel-config", default=default_channel_config_path())
     train.add_argument("--cv", action="store_true")
     train.add_argument("--no-cv", action="store_false", dest="cv")
     train.add_argument("--production", action="store_true")
@@ -39,7 +41,7 @@ def main() -> None:
     predict.add_argument("--events", default=None)
     predict.add_argument("--session-json", default=None)
     predict.add_argument("--model-dir", required=True)
-    predict.add_argument("--channel-config", default="config/channel_config.json")
+    predict.add_argument("--channel-config", default=default_channel_config_path())
     predict.add_argument("--output-json", default=None)
     predict.add_argument("--log-file", default=None)
 
@@ -47,8 +49,8 @@ def main() -> None:
     report.add_argument("--data-dir", default=None)
     report.add_argument("--edf", default=None)
     report.add_argument("--output-dir", default="data/derived/reports")
-    report.add_argument("--channel-config", default="config/channel_config.json")
-    report.add_argument("--preprocess-config", default="config/preprocessing.json")
+    report.add_argument("--channel-config", default=default_channel_config_path())
+    report.add_argument("--preprocess-config", default=default_preprocess_config_path())
 
     args = p.parse_args()
     if args.command == "ingest":

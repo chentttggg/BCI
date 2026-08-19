@@ -8,13 +8,13 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from backend.config import ChannelConfig, PreprocessConfig, TrainConfig
-from backend.io import load_session
-from backend.model import build_shallow_convnet
-from backend.preprocess import prepare_session
-from backend.scoring import aggregate_number_scores
-from frontend.mock_eeg import build_stimulus_list, generate_session_data
-from frontend.paradigm import Paradigm, ParadigmConfig
+from guess_number.backend.config import ChannelConfig, PreprocessConfig, TrainConfig
+from guess_number.backend.io import load_session
+from guess_number.backend.model import build_shallow_convnet
+from guess_number.backend.preprocess import prepare_session
+from guess_number.backend.scoring import aggregate_number_scores
+from guess_number.frontend.mock_eeg import build_stimulus_list, generate_session_data
+from guess_number.frontend.paradigm import Paradigm, ParadigmConfig
 
 
 def test_paradigm_is_balanced() -> None:
@@ -47,7 +47,7 @@ def test_synthetic_prepare_and_scoring(tmp_path: Path) -> None:
 
 def prepare_session_arrays(raw, channels, stimuli, target, cfg):
     """Small helper to bypass file IO in tests."""
-    from backend.preprocess import _resample, _butter_bandpass, _notch_filter, \
+    from guess_number.backend.preprocess import _resample, _butter_bandpass, _notch_filter, \
         apply_reref, epoch_data, detect_artifacts
     filt = _butter_bandpass(raw, 500.0, cfg.highpass_hz, cfg.lowpass_hz)
     filt = _notch_filter(filt, 500.0, [cfg.notch_hz] + cfg.notch_harmonics)
@@ -78,7 +78,7 @@ def test_shallow_convnet_forward_shape() -> None:
 
 def test_edf_roundtrip(tmp_path: Path) -> None:
     pyedflib = pytest.importorskip("pyedflib")
-    from frontend.recorder import RawEDFRecorder
+    from guess_number.frontend.recorder import RawEDFRecorder
 
     rec = RawEDFRecorder(tmp_path / "test.edf", 500.0,
                          ["Fz", "Cz", "P3", "Pz", "P4", "PO7", "PO8", "Oz"],
@@ -94,7 +94,7 @@ def test_edf_roundtrip(tmp_path: Path) -> None:
 
 
 def test_xdawn_projector_shapes() -> None:
-    from backend.xdawn import XdawnProjector
+    from guess_number.backend.xdawn import XdawnProjector
 
     rng = np.random.default_rng(3)
     X = rng.normal(0, 1, size=(30, 8, 300)).astype(np.float32)
@@ -110,9 +110,9 @@ def test_xdawn_projector_shapes() -> None:
 
 
 def test_leadoff_status_marks_bad_trial(tmp_path: Path) -> None:
-    from backend.io import load_session
-    from backend.preprocess import prepare_session
-    from frontend.recorder import RawEDFRecorder
+    from guess_number.backend.io import load_session
+    from guess_number.backend.preprocess import prepare_session
+    from guess_number.frontend.recorder import RawEDFRecorder
 
     channels = ["Fz", "Cz", "P3", "Pz", "P4", "PO7", "PO8", "Oz"]
     rng = np.random.default_rng(4)
@@ -141,7 +141,7 @@ def test_leadoff_status_marks_bad_trial(tmp_path: Path) -> None:
 
 
 def test_channel_dropout_capped() -> None:
-    from backend.dataset import TrialDataset
+    from guess_number.backend.dataset import TrialDataset
 
     rng = np.random.default_rng(9)
     X = rng.normal(size=(20, 11, 40)).astype(np.float32)
@@ -156,8 +156,8 @@ def test_channel_dropout_capped() -> None:
 
 
 def test_edf_writer_preserves_all_annotations(tmp_path: Path) -> None:
-    from backend.io import _read_edf_annotations
-    from frontend.recorder import RawEDFRecorder
+    from guess_number.backend.io import _read_edf_annotations
+    from guess_number.frontend.recorder import RawEDFRecorder
 
     rec = RawEDFRecorder(tmp_path / "many_ann.edf", 500.0,
                          ["Fz", "Cz", "P3", "Pz", "P4", "PO7", "PO8", "Oz"],

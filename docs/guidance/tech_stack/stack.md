@@ -42,7 +42,7 @@ data/
 
 ## 4. 通道与参考
 
-- 默认物理绑定见 `src/config/channel_config.json`。
+- 默认物理绑定见 `src/guess_number/config/channel_config.json`。
 - 8 个 EEG 通道：Fz, Cz, P3, Pz, P4, PO7, PO8, Oz。
 - **Cz 已占用为记录通道，因此不得使用说明书默认参考 Cz**；
   本套帽子实际为 REF=A1（耳部参考）、GND=A2（耳部接地）。

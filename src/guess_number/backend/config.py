@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .utils import read_json
+from ..paths import default_preprocess_config_path, default_train_config_path
 
 
 @dataclass
@@ -125,8 +126,10 @@ class TrainConfig:
         return asdict(self)
 
 
-def load_configs(preprocess_path: str | Path = "config/preprocessing.json",
-                 train_path: str | Path = "config/train.json") -> tuple[PreprocessConfig, TrainConfig]:
+def load_configs(preprocess_path: str | Path | None = None,
+                 train_path: str | Path | None = None) -> tuple[PreprocessConfig, TrainConfig]:
+    preprocess_path = Path(preprocess_path or default_preprocess_config_path())
+    train_path = Path(train_path or default_train_config_path())
     return PreprocessConfig.load(preprocess_path), TrainConfig.load(train_path)
 
 

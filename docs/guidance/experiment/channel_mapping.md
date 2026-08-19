@@ -1,6 +1,6 @@
 # 通道映射与参考配置
 
-## 默认绑定（src/config/channel_config.json）
+## 默认绑定（src/guess_number/config/channel_config.json）
 
 | 硬件 Channel | 电极标签 | 说明 |
 | --- | --- | --- |
@@ -26,7 +26,7 @@
 
 ## BrainSync SDK ChannelConfig
 
-- 程序实际使用的配置源：`src/config/channel_config.json`。
+- 程序实际使用的配置源：`src/guess_number/config/channel_config.json`。
 - 前端启动时会显式构造 `brainsync_sdk.ChannelConfig`，labels/ref/gnd 与上表一致，
   避免使用 SDK 默认的 C6/C4/FC4/... Montage。
 - BrainSync GUI / Multimodal-Hub 兼容格式副本：

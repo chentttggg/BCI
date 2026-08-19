@@ -11,10 +11,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+
+from guess_number.paths import default_channel_config_path
 from typing import Any
 
 
-def read_montage(path: str | Path = "config/channel_config.json") -> dict[str, Any]:
+def read_montage(path: str | Path | None = None) -> dict[str, Any]:
+    path = Path(path or default_channel_config_path())
     with open(path, "r", encoding="utf-8") as f:
         obj = json.load(f)
     channels = [str(item["label"]) for item in obj["eeg_channels"]]
@@ -32,12 +35,12 @@ def read_montage(path: str | Path = "config/channel_config.json") -> dict[str, A
     }
 
 
-def build_sdk_channel_config(path: str | Path = "config/channel_config.json") -> Any:
+def build_sdk_channel_config(path: str | Path | None = None) -> Any:
     """Build a ``brainsync_sdk.ChannelConfig`` with our montage.
 
     Returns None when the optional SDK is unavailable (mock-only installs).
     """
-    montage = read_montage(path)
+    montage = read_montage(path or default_channel_config_path())
     try:
         from brainsync_sdk import ChannelConfig, ElectrodeAssignment
     except Exception:
@@ -53,9 +56,9 @@ def build_sdk_channel_config(path: str | Path = "config/channel_config.json") ->
     )
 
 
-def gui_schema(path: str | Path = "config/channel_config.json") -> dict[str, Any]:
+def gui_schema(path: str | Path | None = None) -> dict[str, Any]:
     """Return the BrainSync GUI/Multimodal-Hub compatible channel-config schema."""
-    montage = read_montage(path)
+    montage = read_montage(path or default_channel_config_path())
     return {
         "schema": "brainsync-gui-channel-config-v1",
         "channel_config": {

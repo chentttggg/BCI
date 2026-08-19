@@ -1,17 +1,13 @@
 .venv*/
 __pycache__/
 *.py[cod]
+*.egg-info/
+dist/
+build/
 .pytest_cache/
-data/raw/*
-!data/raw/.gitkeep
-!data/raw/README.md
-data/derived/*
-!data/derived/.gitkeep
-!data/derived/README.md
-*.tmp
+.ruff_cache/
+data/
+Data/
 
 # provided SDK examples are read-only reference material
 brainsync-sdk-example-main/
-
-# experiment outputs
-Data/

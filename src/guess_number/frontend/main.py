@@ -21,6 +21,8 @@ from typing import Any
 
 import numpy as np
 
+from guess_number.paths import default_channel_config_path
+
 from .acquisition import create_acquirer
 from .channel_config import build_sdk_channel_config
 from .experiment import ExperimentConfig, ExperimentController
@@ -41,7 +43,7 @@ def _read_channels(path: str | Path) -> tuple[list[str], str, str]:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description="Guess-number P300 experiment frontend")
+    p = argparse.ArgumentParser(prog="guess-number-frontend", description="Guess-number P300 experiment frontend")
     mode = p.add_mutually_exclusive_group(required=False)
     mode.add_argument("--mock", action="store_true", help="synthetic EEG mode (no hardware)")
     mode.add_argument("--device", action="store_true", help="BrainSync BS8A real-device mode")
@@ -64,7 +66,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--output-dir", default="Data")
     p.add_argument("--subject-guess", type=int, choices=range(1, 10), default=None,
                    help="受试者在数字播放结束后自己报出的数字 (1-9)")
-    p.add_argument("--channel-config", default="config/channel_config.json")
+    p.add_argument("--channel-config", default=default_channel_config_path())
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--headless", action="store_true",
                    help="run without Qt GUI (useful for mock recording and tests)")
@@ -78,9 +80,9 @@ def _post_session_predict(paths, args: argparse.Namespace) -> None:
     if not args.model_dir:
         return
     try:
-        from backend.predict import process_session
-        from backend.config import ChannelConfig
-        from backend.model import ModelBundle
+        from guess_number.backend.predict import process_session
+        from guess_number.backend.config import ChannelConfig
+        from guess_number.backend.model import ModelBundle
 
         bundle = ModelBundle.load(args.model_dir)
         ch = ChannelConfig.from_json(args.channel_config)

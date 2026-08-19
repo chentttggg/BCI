@@ -18,10 +18,10 @@ if __package__ in (None, ""):
 
 import numpy as np
 
-from frontend.mock_eeg import build_stimulus_list, generate_session_data
-from frontend.paradigm import Paradigm, ParadigmConfig
-from frontend.recorder import RawEDFRecorder
-from frontend.utils import append_jsonl, atomic_write_json, sha256_file, utc_now_iso
+from guess_number.frontend.mock_eeg import build_stimulus_list, generate_session_data
+from guess_number.frontend.paradigm import Paradigm, ParadigmConfig
+from guess_number.frontend.recorder import RawEDFRecorder
+from guess_number.frontend.utils import append_jsonl, atomic_write_json, sha256_file, utc_now_iso
 
 
 def make_session(output_dir: Path, participant: str, session: str, target: int,

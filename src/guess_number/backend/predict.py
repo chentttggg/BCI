@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import argparse
+
+from guess_number.paths import (default_channel_config_path, default_preprocess_config_path, default_train_config_path)
 import json
 import logging
 from pathlib import Path
@@ -102,7 +104,7 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--events", default=None)
     p.add_argument("--session-json", default=None)
     p.add_argument("--model-dir", required=True)
-    p.add_argument("--channel-config", default="config/channel_config.json")
+    p.add_argument("--channel-config", default=default_channel_config_path())
     p.add_argument("--output-json", default=None)
     p.add_argument("--log-file", default=None)
     args = p.parse_args(argv)

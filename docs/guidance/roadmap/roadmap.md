@@ -6,7 +6,7 @@
 ## Stage 0 — 数据接收与完整性校验
 
 - 前端每次运行结束生成：EDF+、events.jsonl、session.json（采集元数据）、LSL 日志。
-- 后端 `cd src && python -m backend.ingest`：
+- 后端 `guess-number-backend ingest`：
   - 校验文件存在、扩展名、大小；
   - 计算 SHA-256；
   - 写入 `data/manifest.jsonl`；
@@ -53,5 +53,5 @@
 
 - 交叉验证：默认 leave-one-session-out；单人单 session 时按 block 分折。
 - 训练 ShallowConvNet 集成；输出 best weights、预处理参数、AUC/准确率报告。
-- 推理：`cd src && python -m backend.predict`，输出逐试次概率、逐数字得分、最终猜测。
+- 推理：`guess-number-backend predict`，输出逐试次概率、逐数字得分、最终猜测。
 - 退出标准：达到 `mission/project_brief.md` 成功标准；所有派生文件有 provenance。

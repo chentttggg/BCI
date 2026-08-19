@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import argparse
+
+from guess_number.paths import (default_channel_config_path, default_preprocess_config_path, default_train_config_path)
 import json
 import logging
 from pathlib import Path
@@ -123,8 +125,8 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--data-dir", default=None, help="report for every EDF under this directory")
     p.add_argument("--edf", default=None)
     p.add_argument("--output-dir", default="data/derived/reports")
-    p.add_argument("--channel-config", default="config/channel_config.json")
-    p.add_argument("--preprocess-config", default="config/preprocessing.json")
+    p.add_argument("--channel-config", default=default_channel_config_path())
+    p.add_argument("--preprocess-config", default=default_preprocess_config_path())
     args = p.parse_args(argv)
     configure_logging(logging.INFO)
     ch = ChannelConfig.from_json(args.channel_config)

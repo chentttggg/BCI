@@ -12,6 +12,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from guess_number.paths import (default_channel_config_path, default_preprocess_config_path, default_train_config_path)
+
 from .config import ChannelConfig, PreprocessConfig, TrainConfig, load_configs
 from .dataset import TrialDataset, make_loss_fn
 from .io import load_session
@@ -482,9 +484,9 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Train ShallowConvNet guess-number decoder")
     p.add_argument("--data-dir", default="data/raw", help="directory containing raw *_eeg.edf sessions")
     p.add_argument("--output-dir", default="data/derived/models/guess_number")
-    p.add_argument("--preprocess-config", default="config/preprocessing.json")
-    p.add_argument("--train-config", default="config/train.json")
-    p.add_argument("--channel-config", default="config/channel_config.json")
+    p.add_argument("--preprocess-config", default=default_preprocess_config_path())
+    p.add_argument("--train-config", default=default_train_config_path())
+    p.add_argument("--channel-config", default=default_channel_config_path())
     p.add_argument("--cv", action="store_true", help="run leave-one-session-out/block CV evaluation")
     p.add_argument("--no-cv", action="store_false", dest="cv")
     p.add_argument("--production", action="store_true", help="train final ensemble on all labeled data")

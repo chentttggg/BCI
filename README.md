@@ -1,135 +1,122 @@
-# Guess Number P300 — 8通道干电极 ShallowConvNet 解码系统
+# Guess Number P300 — 8 通道干电极 ShallowConvNet 解码系统
 
 复现 Moucek et al. (2017) “Guess the number” P300 oddball 实验，并扩展为
-BrainSync BS8A 8 通道干电极（Fz, Cz, P3, Pz, P4, PO7, PO8, Oz）的
-个人化 BCI 前端 + 后端系统。
+BrainSync BS8A 8 通道干电极（Fz, Cz, P3, Pz, P4, PO7, PO8, Oz）的个人化 BCI。
 
-> **重要**：先阅读 `guidance/` 指导文件夹与根目录 `Constitution.md`。
+> 先阅读 `docs/guidance/` 与根目录 `Constitution.md`。
 > 原始数据只读；所有处理从派生副本开始；质量门禁不可跳过。
 
-## 目录
+## 项目结构（现代 src-layout）
 
 ```text
-Libs/                  依赖文件（requirements.txt / requirements.lock）
-src/                   所有需要运行的项目 Python 源码
-  frontend/            实验前端（刺激呈现 + BrainSync 采集 + EDF 记录 + LSL 打标）
-  backend/             ShallowConvNet 训练/推理/QC 后端
-  scripts/             数据检查 / 合成数据 / 电极敲击测试
-  config/              通道、预处理、训练参数 JSON
-guidance/              项目指导文件（mission/tech_stack/roadmap）
-Data/                  实验输出（按开始时间分文件夹）
-data/                  旧示例数据目录（只读）
+pyproject.toml              # 依赖、打包、CLI 入口、pytest/ruff 配置
+src/guess_number/           # 源码包
+  frontend/                 # 实验前端
+  backend/                  # 信号处理 / 训练 / 预测
+  scripts/                  # CLI 脚本
+  config/                   # 打包 JSON 配置
+tests/                      # pytest 测试
+docs/guidance/              # 项目指导文档
+data/                       # 原始/派生数据（git 忽略）
 ```
 
-## 1. 安装
+## 安装
 
 ```bash
 python -m venv .venv311
 .venv311/Scripts/activate        # Windows；Linux/macOS 使用 source .venv311/bin/activate
-pip install -r Libs/requirements.txt
-
-# 仅真实设备采集需要安装 BrainSync SDK：
-# pip install brainsync_sdk==0.3.0
+pip install -e .[dev]
 ```
 
-## 2. 前端采集
+安装后获得命令：
+
+```text
+guess-number-frontend
+guess-number-backend
+guess-number-check-edf
+guess-number-make-synthetic
+guess-number-tap-test
+```
+
+## 前端采集
 
 ```bash
-cd src
+# 真实设备，6 blocks × 5 次重复
+guess-number-frontend --device --target 7 --blocks 6 --repetitions 5     --output-dir data/recordings --subject P01 --session 001
 
-# 真实设备，6 blocks x 5 次重复，受试者默想 7
-python -m frontend.main --device --target 7 --blocks 6 --repetitions 5 \
-    --output-dir ../Data --subject P01 --session 001
-
-# 无硬件 mock 自测（短范式，便于快速验证）
-python -m frontend.main --mock --headless --target 7 \
-    --blocks 1 --repetitions 1 --stimulus-ms 20 --blank-ms 30 \
-    --output-dir ../Data
+# mock 自测
+guess-number-frontend --mock --headless --target 7     --blocks 1 --repetitions 1 --stimulus-ms 20 --blank-ms 30     --output-dir data/recordings
 ```
 
-前端默认参数：500 Hz、Gain24、刺激 200 ms、空白 1300 ms（SOA=1500 ms）、
-每 block 9×5=45 试次。
+默认：500 Hz、Gain24、刺激 200 ms、空白 1300 ms。点击开始实验即开始采集，
+第一个数字前默认 2 秒黑屏静息基线（`--baseline-black-ms` 可调）。
 
-**自动采集与保存**：点击开始实验即开始采集，第一个数字前默认留 2 秒黑屏
-作为静息基线（`--baseline-black-ms` 可调）；结束后按实验开始时间
-创建 `Data/YYYYmmdd_HHMMSS/` 文件夹，自动保存总 EDF、逐 block 分片 EDF、
-events.jsonl、session.json、experiment_summary.json、split_manifest.json。
-GUI 结束后会弹出对话框记录受试者猜的数字；headless 可用 `--subject-guess N`。
+结束自动保存到 `data/recordings/<开始时间>/`：
 
-生成文件：
+```text
+总 EDF
+eeg_block_000.edf ...
+events.jsonl
+session.json
+experiment_summary.json
+split_manifest.json
+```
 
-- `sub-..._eeg.edf`：未滤波原始 EEG（µV）
-- `sub-..._eeg_events.jsonl`：每个 marker 的 LSL/monotonic/采样点索引
-- `sub-..._eeg_session.json`：通道、REF/GND、目标数字、哈希、丢包统计
+数字刺激通过 EDF annotation + events.jsonl + LSL marker 三路记录，并用
+LSL↔EEG 线性拟合自动对齐时间戳。GUI 结束会弹窗记录受试者猜的数字；
+headless 用 `--subject-guess N`。
 
-**数字刺激自动对齐**：每个 `stim_on/{数字}` 会同时写入
-EDF annotation 和 `events.jsonl`；前端用最近 12 个 EEG-LSL 时钟锚点做一阶线性拟合，
-把 marker 的 LSL 时间戳自动换算成 EEG 采样点，并记录
-`alignment_source`、`recording_sample`、`edf_annotation_onset_sec`。
-`backend.ingest` 会输出 `marker_alignment`（EDF annotation 与事件日志的中位误差，单位 ms）。
-
-## 3. 合成训练数据（可复现 demo）
+## 后端处理
 
 ```bash
-python -m scripts.make_synthetic_dataset --output-dir ../data/raw \
-    --sessions 6 --blocks 2 --repetitions 5 --seed 100
+# 完整性检查 + 对齐验证
+guess-number-backend ingest --data-dir data/raw --manifest data/manifest.jsonl
+
+# QC 报告
+guess-number-backend report --data-dir data/raw --output-dir data/derived/reports
+
+# 训练
+guess-number-backend train --data-dir data/raw     --output-dir data/derived/models/guess_number --cv --production
+
+# 预测
+guess-number-backend predict     --edf data/raw/sub-P01_ses-001_task-guessnumber_run-001_eeg.edf     --model-dir data/derived/models/guess_number
 ```
 
-## 4. 后端处理
+## 常用脚本
 
 ```bash
-# Stage 0：原始文件哈希入库与完整性检查
-python -m backend.main ingest --data-dir ../data/raw --manifest ../data/manifest.jsonl
+# 检查一份 EDF 的通道状态
+guess-number-check-edf <edf文件> --plot data/derived/reports/qc.png
 
-# Stage 2-4：QC 报告（PSD、ERP、伪迹 mask）
-python -m backend.main report --data-dir ../data/raw --output-dir ../data/derived/reports
+# 生成合成训练数据
+guess-number-make-synthetic --output-dir data/raw --sessions 6 --seed 100
 
-# Stage 5：训练 + 交叉验证 + 生产集成模型
-python -m backend.main train --data-dir ../data/raw \
-    --output-dir ../data/derived/models/guess_number --cv --production
-
-# 推理：对一个 session 猜测默想数字
-python -m backend.main predict \
-    --edf ../data/raw/sub-P01_ses-001_task-guessnumber_run-001_eeg.edf \
-    --model-dir ../data/derived/models/guess_number
+# 电极逐通道敲击测试
+guess-number-tap-test --seconds 20 --gain Gain24
 ```
 
-训练核心为 Schirrmeister et al. (2017) 的 **ShallowConvNet**：
-temporal conv(60, 1×50@250Hz) → spatial conv → BatchNorm → square →
-avg pool → log → dropout → 分类。先做 target/non-target 二分类，再按刺激数字
-以 `mean(logit)`（等先验 Bayesian MAP）聚合得到 1–9 的 9 选 1 猜测，并输出
-block 置信度与 logit margin。默认使用多 seed 集成。
+## 模型要点
 
-**面向 BrainSync 数据特征/接口的增强**：
-- SDK batch_size 固定为 250 的整数倍；事件采样点做包间插值；
-- 记录并利用 `leadoff_status`、`trig_in_status`、`is_impedance_mode()`，
-  导联脱落/阻抗模式试次在后端被标记为坏试次；
-- 0.5–20 Hz 滤波（P300 频带，抑制干电极肌电）；
-- **xDAWN 空间滤波增强通道**（原始 8 通道 + target 2 成分 + non-target 1 成分）；
-- mixup(α=0.2)、时间抖动、幅度缩放、通道 dropout、噪声注入；
-- 单被试小样本：focal loss、类别平衡采样、LOSO/block 交叉验证、多 seed 集成。
+- 主干：Schirrmeister et al. (2017) ShallowConvNet；
+- 输入：原始 8 通道 + xDAWN target 2 成分 + non-target 1 成分；
+- 预处理：0.5–20 Hz 带通、50/100 Hz 陷波、250 Hz 降采样、CAR、保守伪迹标记；
+- 训练：focal loss、类别平衡采样、mixup、受控通道 dropout、多 seed 集成；
+- 聚合：逐试次 P(target) → mean(logit) → 9 选 1，输出 block 置信度。
 
-## 5. 主要改进（相对于原文献）
+## 配置
 
-1. 3 通道 → 8 通道顶-枕覆盖；
-2. 人工看平均 ERP → ShallowConvNet 单试次概率 + block 级聚合；
-3. EDF/LSL/JSONL 三重事件记录，事件样本索引可追溯；
-4. 保守伪迹阈值检测（只标记，不静默删除）；
-5. 类别不平衡 focal loss、加权采样、时间/幅度增强 + 受控通道 dropout（0.05，最多丢 1 通道）；
-6. 按 session 的 LOSO 交叉验证 + 多 seed 集成，降低单人小样本方差；
-7. 算力优先级低：原始 500 Hz 保留，模型输入 250 Hz，集成不压缩。
+打包配置在 `src/guess_number/config/`：
 
-## 6. 注意事项
+```text
+channel_config.json            # 通道顺序、REF/GND
+preprocessing.json             # 滤波、xDAWN、QC 阈值
+train.json                     # 模型与训练参数
+```
 
-- `src/config/channel_config.json` 是程序唯一读取的 Montage 源，必须与物理连线一致。
-  Cz 是记录通道，不能按 BrainSync 说明书默认 REF=Cz。
-  本套电极帽实际为 REF=A1（耳部参考）、GND=A2（耳部接地）。
-  前端会显式构造 BrainSync SDK `ChannelConfig`（不使用 SDK 默认 C6/C4/... Montage）。
-  BrainSync GUI 兼容格式见 `src/config/brainsync_gui_channel_config.json`。
-- 通道 dropout 已按 8 通道空间覆盖风险调低：概率 0.05，且每次最多置零 1 个通道；
-  导联脱落主要由 `leadoff_status` QC 处理，而不是靠高概率通道 dropout。
-- 真实采集前先查阻抗：建议每个通道 < 5 kΩ，门槛 < 10 kΩ。
-- 后端滤波顺序为：0.5 Hz 高通 → 50/100 Hz 陷波 → 20 Hz 低通 →
-  250 Hz 降采样 → epoch(-0.2~1.0 s) → 基线(-0.2~0 s) → CAR →
-  可选 xDAWN 增强通道。所有参数在 `src/config/preprocessing.json`。
-- 重大参数修改必须记录到 `guidance/tech_stack/decisions_log.md`。
+可用环境变量 `GUESS_NUMBER_CONFIG_DIR` 指定外部配置目录。
+
+## 测试
+
+```bash
+pytest
+```

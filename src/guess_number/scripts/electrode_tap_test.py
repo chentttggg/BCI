@@ -28,7 +28,7 @@ def print_stats(buffers, label: str) -> None:
               f"{np.ptp(arr):>10.2f} {arr.std():>10.2f}")
 
 
-async def main(seconds: int, gain: str) -> None:
+async def run(seconds: int, gain: str) -> None:
     import brainsync_sdk as sdk
 
     gain_map = {
@@ -81,9 +81,13 @@ async def main(seconds: int, gain: str) -> None:
         pass
 
 
-if __name__ == "__main__":
+def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--seconds", type=int, default=20)
     p.add_argument("--gain", default="Gain24")
     args = p.parse_args()
-    asyncio.run(main(args.seconds, args.gain))
+    asyncio.run(run(args.seconds, args.gain))
+
+
+if __name__ == "__main__":
+    main()

@@ -24,7 +24,7 @@ ShallowConvNet 模型自动猜测受试者所想的数字。本机使用 BrainSy
 ## 执行顺序（必须遵守）
 
 1. 先阅读本指导文件夹，再运行任何程序。
-2. 先检查 `src/config/channel_config.json` 与物理连线一致，再开始实验。
+2. 先检查 `src/guess_number/config/channel_config.json` 与物理连线一致，再开始实验。
 3. 前端只保存原始数据（EDF+ 与不可变事件日志）；滤波/伪迹处理只发生在派生副本。
 4. 后端任何处理必须通过 `guidance/roadmap/quality_gates.md` 定义的质量门禁后才可进入下一阶段。
 5. 模型重大参数变更必须写入 `guidance/tech_stack/decisions_log.md`。

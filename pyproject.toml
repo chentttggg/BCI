@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "guess-number-p300"
+version = "0.1.0"
+description = "8-channel dry-EEG guess-number P300 frontend and ShallowConvNet backend"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "pandas>=2.0",
+    "scikit-learn>=1.3",
+    "mne>=1.6",
+    "pyedflib>=0.1.30",
+    "pylsl>=1.16",
+    "matplotlib>=3.7",
+    "torch>=2.0",
+    "PySide6>=6.4",
+    "brainsync-sdk==0.3.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+]
+
+[project.scripts]
+guess-number-frontend = "guess_number.frontend.main:main"
+guess-number-backend = "guess_number.backend.main:main"
+guess-number-check-edf = "guess_number.scripts.check_edf_channels:main"
+guess-number-make-synthetic = "guess_number.scripts.make_synthetic_dataset:main"
+guess-number-tap-test = "guess_number.scripts.electrode_tap_test:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"guess_number.config" = ["*.json"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
