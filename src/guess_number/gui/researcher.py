@@ -159,10 +159,14 @@ class ResearcherWindow(QMainWindow):
 
         device_box, device_form = self._group("设备")
         self.cb_mode = QComboBox()
-        self.cb_mode.addItems(["真实设备", "Mock 模拟"])
+        self.cb_mode.addItems(["真实设备(USB)", "蓝牙设备", "Mock 模拟"])
+        self.ed_ble_name = QLineEdit("BrainSync")
+        self.cb_mode.currentIndexChanged.connect(
+            lambda _: self.ed_ble_name.setEnabled(self.cb_mode.currentIndex() == 1))
         self.btn_check = QPushButton("检查设备")
         self.btn_check.clicked.connect(self.check_device)
         device_form.addRow("采集模式", self.cb_mode)
+        device_form.addRow("BLE 设备名", self.ed_ble_name)
         device_form.addRow("", self.btn_check)
         self.lbl_device = QLabel("尚未检查")
         device_form.addRow("状态", self.lbl_device)
@@ -276,9 +280,14 @@ class ResearcherWindow(QMainWindow):
         def work() -> None:
             try:
                 import brainsync_sdk as sdk
+                if self.cb_mode.currentIndex() == 1:
+                    sdk.ble_init_adapter()
+                    self.lbl_device.setText(
+                        f"蓝牙适配器已初始化；开始实验时将连接 {self.ed_ble_name.text().strip() or 'BrainSync'}")
+                    return
                 ports = sdk.list_brainsync_ports()
                 if not ports:
-                    self.lbl_device.setText("未发现 BrainSync 设备")
+                    self.lbl_device.setText("未发现 BrainSync USB 设备")
                     return
                 self.lbl_device.setText(f"发现设备: {', '.join(map(str, ports))}")
             except Exception as exc:
@@ -299,7 +308,8 @@ class ResearcherWindow(QMainWindow):
             channels=montage["channels"],
             ref_label=montage["ref_label"],
             gnd_label=montage["gnd_label"],
-            acquisition_mode="mock" if self.cb_mode.currentIndex() == 1 else "device",
+            acquisition_mode=("device" if self.cb_mode.currentIndex() == 0
+                              else "ble" if self.cb_mode.currentIndex() == 1 else "mock"),
             output_dir=self.ed_output.text().strip() or str(Path.cwd() / "data" / "recordings"),
         )
         pcfg = ParadigmConfig(
@@ -324,8 +334,11 @@ class ResearcherWindow(QMainWindow):
             cfg, pcfg = self._experiment_config()
             paradigm = Paradigm(pcfg)
             stimuli = build_stimulus_list(paradigm.schedule_records(), cfg.sfreq)
+            if cfg.acquisition_mode == "ble" and cfg.sfreq > 1000:
+                raise ValueError("蓝牙模式最高只支持 1000 Hz，请把采样率改为 250/500/1000")
             acquirer = create_acquirer(cfg.acquisition_mode, cfg.sfreq, cfg.channels,
-                                       stimuli, cfg.target_number, seed=0)
+                                       stimuli, cfg.target_number, seed=0,
+                                       ble_name=self.ed_ble_name.text().strip() or "BrainSync")
             marker_outlet = create_marker_outlet()
             eeg_outlet = create_eeg_outlet(cfg.sfreq, cfg.channels)
             controller = ExperimentController(cfg, paradigm, acquirer, marker_outlet, eeg_outlet)

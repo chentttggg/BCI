@@ -101,7 +101,12 @@ class BrainSyncAcquirer:
 
     def __init__(self, sfreq: int = 500, gain: str = "Gain24", batch_size: int = 250,
                  channels: list[str] | None = None,
-                 sdk_channel_config: object | None = None) -> None:
+                 sdk_channel_config: object | None = None,
+                 transport: str = "serial", ble_name: str = "BrainSync") -> None:
+        self.transport = transport
+        self.ble_name = ble_name
+        if transport == "ble" and int(sfreq) > 1000:
+            raise ValueError("BLE transport supports sample rates <= 1000 Hz")
         self.sfreq = int(sfreq)
         self.gain = gain
         self.sdk_channel_config = sdk_channel_config
@@ -185,7 +190,11 @@ class BrainSyncAcquirer:
         gain_enum = gain_map.get(self.gain, brainsync_sdk.EegGain.Gain24)
         rate_enum = rate_map.get(self.sfreq, brainsync_sdk.EegSampleRate.Hz500)
 
-        self.device_handle = await brainsync_sdk.open_brainsync_serial()
+        if self.transport == "ble":
+            logger.info("Opening BrainSync via BLE (name=%s)", self.ble_name)
+            self.device_handle = await brainsync_sdk.open_brainsync_ble(self.ble_name)
+        else:
+            self.device_handle = await brainsync_sdk.open_brainsync_serial()
         if self.sdk_channel_config is not None:
             self.channel_config_summary = {
                 "labels": list(getattr(self.sdk_channel_config, "labels", [])),
@@ -319,10 +328,16 @@ class BrainSyncAcquirer:
 
 def create_acquirer(mode: str, sfreq: int, channels: list[str], stimuli: list,
                     target_number: int, seed: int,
-                    sdk_channel_config: object | None = None) -> object:
+                    sdk_channel_config: object | None = None,
+                    ble_name: str = "BrainSync") -> object:
     if mode == "mock":
         return MockAcquirer(sfreq, channels, stimuli, target_number, seed=seed)
-    if mode == "device":
+    if mode in ("device", "serial"):
         return BrainSyncAcquirer(sfreq=sfreq, channels=channels,
-                                 sdk_channel_config=sdk_channel_config)
+                                 sdk_channel_config=sdk_channel_config,
+                                 transport="serial")
+    if mode == "ble":
+        return BrainSyncAcquirer(sfreq=sfreq, channels=channels,
+                                 sdk_channel_config=sdk_channel_config,
+                                 transport="ble", ble_name=ble_name)
     raise ValueError(f"Unknown acquisition mode: {mode!r}")

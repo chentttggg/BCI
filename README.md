@@ -55,7 +55,7 @@ dist/GuessNumberResearcher.exe
 
 图形界面把实验步骤和常用后端步骤都做成了按钮：
 
-- 检查设备
+- 检查设备（USB / 蓝牙）
 - 填写受试者/目标数字/blocks/重复次数/采样率/增益/时序
 - 开始实验 / 停止实验
 - 实验结束后弹窗记录受试者猜的数字
@@ -64,8 +64,11 @@ dist/GuessNumberResearcher.exe
 ## 前端采集
 
 ```bash
-# 真实设备，6 blocks × 5 次重复
+# USB 真实设备，6 blocks × 5 次重复
 guess-number-frontend --device --target 7 --blocks 6 --repetitions 5     --output-dir data/recordings --subject P01 --session 001
+
+# 蓝牙设备（BLE 最高 1000 Hz）
+guess-number-frontend --ble --ble-name BrainSync --sfreq 250     --target 7 --blocks 6 --repetitions 5     --output-dir data/recordings --subject P01 --session 001
 
 # mock 自测
 guess-number-frontend --mock --headless --target 7     --blocks 1 --repetitions 1 --stimulus-ms 20 --blank-ms 30     --output-dir data/recordings

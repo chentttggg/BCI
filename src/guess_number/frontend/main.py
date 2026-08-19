@@ -46,7 +46,9 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="guess-number-frontend", description="Guess-number P300 experiment frontend")
     mode = p.add_mutually_exclusive_group(required=False)
     mode.add_argument("--mock", action="store_true", help="synthetic EEG mode (no hardware)")
-    mode.add_argument("--device", action="store_true", help="BrainSync BS8A real-device mode")
+    mode.add_argument("--device", action="store_true", help="BrainSync BS8A USB serial mode")
+    mode.add_argument("--ble", action="store_true", help="BrainSync BS8A Bluetooth mode")
+    p.add_argument("--ble-name", default="BrainSync", help="BLE device name filter")
     p.add_argument("--subject", default="P01")
     p.add_argument("--session", default="001")
     p.add_argument("--run", default="001")
@@ -101,7 +103,7 @@ def _run_headless(args: argparse.Namespace) -> int:
         participant_id=args.subject, session_id=args.session, run_id=args.run,
         target_number=args.target, sfreq=args.sfreq, gain=args.gain,
         channels=channels, ref_label=ref, gnd_label=gnd,
-        acquisition_mode="mock" if args.mock else "device",
+        acquisition_mode="mock" if args.mock else ("ble" if args.ble else "device"),
         output_dir=args.output_dir, seed=args.seed,
         subject_guess=args.subject_guess,
     )
@@ -121,7 +123,8 @@ def _run_headless(args: argparse.Namespace) -> int:
     sdk_channel_config = build_sdk_channel_config(args.channel_config)
     acquirer = create_acquirer(cfg.acquisition_mode, args.sfreq, channels, stimuli,
                                args.target, seed=args.seed,
-                               sdk_channel_config=sdk_channel_config)
+                               sdk_channel_config=sdk_channel_config,
+                               ble_name=args.ble_name)
     marker_outlet = None if args.disable_lsl else create_marker_outlet()
     eeg_outlet = None if args.disable_lsl else create_eeg_outlet(args.sfreq, channels)
     if marker_outlet is None:
@@ -166,7 +169,7 @@ def _run_gui(args: argparse.Namespace) -> int:
         participant_id=args.subject, session_id=args.session, run_id=args.run,
         target_number=args.target, sfreq=args.sfreq, gain=args.gain,
         channels=channels, ref_label=ref, gnd_label=gnd,
-        acquisition_mode="mock" if args.mock else "device",
+        acquisition_mode="mock" if args.mock else ("ble" if args.ble else "device"),
         output_dir=args.output_dir, seed=args.seed,
         subject_guess=args.subject_guess,
     )
@@ -186,7 +189,8 @@ def _run_gui(args: argparse.Namespace) -> int:
     sdk_channel_config = build_sdk_channel_config(args.channel_config)
     acquirer = create_acquirer(cfg.acquisition_mode, args.sfreq, channels, stimuli,
                                args.target, seed=args.seed,
-                               sdk_channel_config=sdk_channel_config)
+                               sdk_channel_config=sdk_channel_config,
+                               ble_name=args.ble_name)
     marker_outlet = None if args.disable_lsl else create_marker_outlet()
     eeg_outlet = None if args.disable_lsl else create_eeg_outlet(args.sfreq, channels)
     if marker_outlet is None:
