@@ -46,7 +46,8 @@ python -m frontend.main --mock --headless --target 7 \
 前端默认参数：500 Hz、Gain24、刺激 200 ms、空白 1300 ms（SOA=1500 ms）、
 每 block 9×5=45 试次。
 
-**自动采集与保存**：采集在第一个数字出现时自动启动；结束后按实验开始时间
+**自动采集与保存**：点击开始实验即开始采集，第一个数字前默认留 2 秒黑屏
+作为静息基线（`--baseline-black-ms` 可调）；结束后按实验开始时间
 创建 `Data/YYYYmmdd_HHMMSS/` 文件夹，自动保存总 EDF、逐 block 分片 EDF、
 events.jsonl、session.json、experiment_summary.json、split_manifest.json。
 GUI 结束后会弹出对话框记录受试者猜的数字；headless 可用 `--subject-guess N`。

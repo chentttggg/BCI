@@ -11,11 +11,12 @@ import numpy as np
 class ParadigmConfig:
     blocks: int = 6
     repetitions: int = 5
-    fixation_s: float = 0.5
+    fixation_s: float = 0.0
     stimulus_s: float = 0.2
     blank_s: float = 1.3
+    baseline_black_s: float = 2.0
     inter_block_s: float = 2.0
-    start_delay_s: float = 1.0
+    start_delay_s: float = 0.0
     end_delay_s: float = 1.0
     seed: int = 0
 
@@ -63,7 +64,13 @@ class Paradigm:
 
     def _build(self) -> None:
         cfg = self.cfg
-        t = cfg.start_delay_s
+        t = 0.0
+        # Two seconds of black screen at the very beginning. Acquisition starts
+        # immediately at session_start, so this period is the resting baseline.
+        self.events.append(TimelineEvent(t, "baseline_start"))
+        t += cfg.baseline_black_s
+        self.events.append(TimelineEvent(t, "baseline_end"))
+        t += cfg.start_delay_s
         for block in range(cfg.blocks):
             self.events.append(TimelineEvent(t, "block_start", block=block))
             self.events.append(TimelineEvent(t, "fixation_on", cfg.fixation_s, block=block))

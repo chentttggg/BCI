@@ -160,3 +160,18 @@
   5. GUI 结束弹窗记录受试者猜测；headless 支持 `--subject-guess`。
 - 影响范围：frontend/main.py、experiment.py、recorder.py、acquisition.py。
 - 回滚：见 Git 历史提交。
+
+## D-012 点击开始即采集，并在第一个数字前保留 2 秒黑屏基线
+
+- 日期：2026-08-19
+- 变更者：EEG 分析工程师（agent）
+- 变更理由：用户要求点击“开始实验”就启动采集；第一个数字前留 2 秒黑屏，
+  用于采集平静状态数据作为 P300 对比基线。
+- 变更内容：
+  1. `ExperimentController.start()` 立即启动 acquirer；
+  2. `ParadigmConfig.baseline_black_s=2.0`，时间线 t=0 写入
+     `baseline_start`，t=2s 写入 `baseline_end`，然后第一个数字；
+  3. 默认 `fixation_s=0`、`start_delay_s=0`；
+  4. CLI 新增 `--baseline-black-ms`（默认 2000）。
+- 影响范围：frontend/paradigm.py、experiment.py、main.py；
+  scripts/make_synthetic_dataset.py。

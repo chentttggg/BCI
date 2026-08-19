@@ -30,8 +30,9 @@ def make_session(output_dir: Path, participant: str, session: str, target: int,
     channels = ["Fz", "Cz", "P3", "Pz", "P4", "PO7", "PO8", "Oz"]
     paradigm = Paradigm(ParadigmConfig(
         blocks=blocks, repetitions=repetitions,
-        fixation_s=0.5, stimulus_s=stimulus_ms / 1000.0, blank_s=blank_ms / 1000.0,
-        inter_block_s=2.0, start_delay_s=1.0, end_delay_s=1.0, seed=seed))
+        fixation_s=0.0, stimulus_s=stimulus_ms / 1000.0, blank_s=blank_ms / 1000.0,
+        baseline_black_s=2.0, inter_block_s=2.0, start_delay_s=0.0, end_delay_s=1.0,
+        seed=seed))
     schedule = paradigm.schedule_records()
     stimuli = build_stimulus_list(schedule, sfreq)
     raw = generate_session_data(sfreq, channels, stimuli, target, seed=seed)

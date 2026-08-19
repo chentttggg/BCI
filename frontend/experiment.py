@@ -129,6 +129,7 @@ class ExperimentController:
                 "repetitions": self.paradigm.cfg.repetitions,
                 "stimulus_s": self.paradigm.cfg.stimulus_s,
                 "blank_s": self.paradigm.cfg.blank_s,
+                "baseline_black_s": self.paradigm.cfg.baseline_black_s,
                 "fixation_s": self.paradigm.cfg.fixation_s,
                 "inter_block_s": self.paradigm.cfg.inter_block_s,
                 "seed": self.paradigm.cfg.seed,
@@ -146,7 +147,10 @@ class ExperimentController:
             return
         self._sample_count_at_start = int(self.acquirer.sample_count)
         self._runner = TimelineRunner(self.paradigm, self._on_timeline_event)
-        # Acquisition intentionally starts together with the first digit onset.
+        # Acquisition starts immediately when the experiment starts. The first
+        # two seconds are a black-screen resting baseline.
+        self.acquirer.start(self._on_eeg_chunk)
+        self._acquisition_started = True
         self._start_monotonic = time.monotonic()
         self._push_marker("session_start")
         self._push_marker(f"target/{self.cfg.target_number}")
@@ -329,6 +333,12 @@ class ExperimentController:
         visual: str | None = None
         if event.kind == "session_start":
             marker_text = "session_start"
+        elif event.kind == "baseline_start":
+            marker_text = "baseline_start"
+            visual = None
+        elif event.kind == "baseline_end":
+            marker_text = "baseline_end"
+            visual = None
         elif event.kind == "block_start":
             marker_text = f"block_start/{event.block}"
         elif event.kind == "fixation_on":
@@ -339,8 +349,6 @@ class ExperimentController:
             marker_text = f"fixation_off/{event.block}"
             visual = None
         elif event.kind == "stim_on":
-            if not self._acquisition_started:
-                self._start_acquisition(event)
             marker_text = f"stim_on/{event.number}"
             visual = str(event.number)
             duration = event.duration_sec

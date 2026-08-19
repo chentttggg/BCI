@@ -53,11 +53,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--gain", default="Gain24")
     p.add_argument("--blocks", type=int, default=6)
     p.add_argument("--repetitions", type=int, default=5)
-    p.add_argument("--fixation-ms", type=int, default=500)
+    p.add_argument("--fixation-ms", type=int, default=0)
+    p.add_argument("--baseline-black-ms", type=int, default=2000,
+                   help="第一个数字前的黑屏静息基线时长")
     p.add_argument("--stimulus-ms", type=int, default=200)
     p.add_argument("--blank-ms", type=int, default=1300)
     p.add_argument("--inter-block-ms", type=int, default=2000)
-    p.add_argument("--start-delay-ms", type=int, default=1000)
+    p.add_argument("--start-delay-ms", type=int, default=0)
     p.add_argument("--end-delay-ms", type=int, default=1000)
     p.add_argument("--output-dir", default="Data")
     p.add_argument("--subject-guess", type=int, choices=range(1, 10), default=None,
@@ -105,6 +107,7 @@ def _run_headless(args: argparse.Namespace) -> int:
         blocks=args.blocks, repetitions=args.repetitions,
         fixation_s=args.fixation_ms / 1000.0,
         stimulus_s=args.stimulus_ms / 1000.0,
+        baseline_black_s=args.baseline_black_ms / 1000.0,
         blank_s=args.blank_ms / 1000.0,
         inter_block_s=args.inter_block_ms / 1000.0,
         start_delay_s=args.start_delay_ms / 1000.0,
@@ -169,6 +172,7 @@ def _run_gui(args: argparse.Namespace) -> int:
         blocks=args.blocks, repetitions=args.repetitions,
         fixation_s=args.fixation_ms / 1000.0,
         stimulus_s=args.stimulus_ms / 1000.0,
+        baseline_black_s=args.baseline_black_ms / 1000.0,
         blank_s=args.blank_ms / 1000.0,
         inter_block_s=args.inter_block_ms / 1000.0,
         start_delay_s=args.start_delay_ms / 1000.0,
