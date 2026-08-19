@@ -19,6 +19,7 @@ import io
 import logging
 import sys
 import time
+import traceback
 from pathlib import Path
 from typing import Any
 
@@ -54,6 +55,17 @@ from guess_number.frontend.paradigm import Paradigm, ParadigmConfig
 logger = logging.getLogger("guess_number.gui")
 
 
+def project_root() -> Path:
+    """Project data root in both source and PyInstaller frozen modes."""
+    if getattr(sys, "frozen", False):
+        exe_dir = Path(sys.executable).resolve().parent
+        parent = exe_dir.parent
+        if (parent / "src" / "guess_number").exists() or (parent / "pyproject.toml").exists():
+            return parent
+        return exe_dir
+    return Path(__file__).resolve().parents[3]
+
+
 class BackendWorker(QThread):
     log = Signal(str)
     done = Signal(int)
@@ -85,7 +97,10 @@ class BackendWorker(QThread):
         except SystemExit as exc:
             code = int(exc.code or 0)
         except Exception:
+            tb = traceback.format_exc()
             logger.exception("backend command failed")
+            if tb not in buf.getvalue():
+                buf.write(tb)
             code = 1
         text = buf.getvalue()
         if text:
@@ -184,7 +199,9 @@ class ResearcherWindow(QMainWindow):
         self.controller: ExperimentController | None = None
         self.stimulus: StimulusWindow | None = None
         self.experiment_timer: QTimer | None = None
+        self.project_root = project_root()
         self._build_ui()
+        self._log(f"项目数据根目录: {self.project_root}")
         self._log("GUI ready. 请先检查设备，再填写实验参数。")
 
     def _build_ui(self) -> None:
@@ -229,7 +246,7 @@ class ResearcherWindow(QMainWindow):
         self.sp_stim_ms = QSpinBox(); self.sp_stim_ms.setRange(50, 1000); self.sp_stim_ms.setValue(200)
         self.sp_blank_ms = QSpinBox(); self.sp_blank_ms.setRange(100, 5000); self.sp_blank_ms.setValue(1300)
         self.sp_baseline_ms = QSpinBox(); self.sp_baseline_ms.setRange(0, 10000); self.sp_baseline_ms.setValue(2000)
-        self.ed_output = QLineEdit(str(Path.cwd() / "data" / "recordings"))
+        self.ed_output = QLineEdit(str(self.project_root / "data" / "recordings"))
         btn_out = QPushButton("选择...")
         btn_out.clicked.connect(self.choose_output_dir)
         out_row = QHBoxLayout(); out_row.addWidget(self.ed_output); out_row.addWidget(btn_out)
@@ -269,12 +286,12 @@ class ResearcherWindow(QMainWindow):
         widget = QWidget()
         root = QVBoxLayout(widget)
         box, form = self._group("后端处理")
-        self.ed_data_dir = QLineEdit(str(Path.cwd() / "data" / "raw"))
+        self.ed_data_dir = QLineEdit(str(self.project_root / "data" / "raw"))
         btn_data = QPushButton("选择...")
         btn_data.clicked.connect(lambda: self.choose_dir(self.ed_data_dir))
         data_row = QHBoxLayout(); data_row.addWidget(self.ed_data_dir); data_row.addWidget(btn_data)
         form.addRow("原始数据目录", data_row)
-        self.ed_model_dir = QLineEdit(str(Path.cwd() / "data" / "derived" / "models" / "guess_number"))
+        self.ed_model_dir = QLineEdit(str(self.project_root / "data" / "derived" / "models" / "guess_number"))
         btn_model = QPushButton("选择...")
         btn_model.clicked.connect(lambda: self.choose_dir(self.ed_model_dir))
         model_row = QHBoxLayout(); model_row.addWidget(self.ed_model_dir); model_row.addWidget(btn_model)
@@ -425,7 +442,7 @@ class ResearcherWindow(QMainWindow):
     def run_backend(self, command: str) -> None:
         data_dir = self.ed_data_dir.text().strip()
         model_dir = self.ed_model_dir.text().strip()
-        report_dir = str(Path(model_dir).parents[1] / "reports") if model_dir else "data/derived/reports"
+        report_dir = str(self.project_root / "data" / "derived" / "reports")
         manifest = str(Path(data_dir).parent / "manifest.jsonl") if data_dir else "data/manifest.jsonl"
         if command == "ingest":
             argv = ["--data-dir", data_dir, "--manifest", manifest]
