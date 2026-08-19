@@ -36,7 +36,30 @@ guess-number-backend
 guess-number-check-edf
 guess-number-make-synthetic
 guess-number-tap-test
+guess-number-researcher      # 研究员图形界面
 ```
+
+## 研究员图形界面 / EXE
+
+源码入口：`src/guess_number/gui/researcher.py`。打包命令：
+
+```bash
+pyinstaller --noconfirm --clean packaging/guess_number_researcher.spec
+```
+
+产物：
+
+```text
+dist/GuessNumberResearcher.exe
+```
+
+图形界面把实验步骤和常用后端步骤都做成了按钮：
+
+- 检查设备
+- 填写受试者/目标数字/blocks/重复次数/采样率/增益/时序
+- 开始实验 / 停止实验
+- 实验结束后弹窗记录受试者猜的数字
+- 完整性检查、QC 报告、训练、预测数字
 
 ## 前端采集
 
