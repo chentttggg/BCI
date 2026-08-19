@@ -63,6 +63,11 @@ async def main(seconds: int, gain: str) -> None:
         await sdk.set_eeg_gains(handle, [gain_enum] * 8)
     except Exception:
         pass
+    # Normal EEG streaming should disable lead-off test injection.
+    try:
+        await sdk.disable_all_eeg_leadoff_channels(handle)
+    except Exception:
+        pass
     await sdk.subscribe_eeg_data(handle, 250, on_packets)
     await sdk.set_eeg_transfer(handle, True)
     print(f"Streaming for {seconds}s. Tap/shake one electrode at a time...")

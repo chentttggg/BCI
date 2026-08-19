@@ -208,22 +208,17 @@ class BrainSyncAcquirer:
         except Exception:
             logger.debug("per-channel gain setup skipped", exc_info=True)
         await brainsync_sdk.clear_receive_buffer(self.device_handle)
-        # Dry electrodes benefit from lead-off monitoring. The SDK may reject these
-        # calls on older firmware, so configuration is best-effort and recorded.
+        # Normal EEG must not have lead-off test current injected into the inputs.
+        # Leaving lead-off detection on pins 7 ADC channels to the negative rail
+        # (-8388608) and makes them look dead/flat.
         try:
-            await brainsync_sdk.set_eeg_leadoff_type(self.device_handle,
-                                                     brainsync_sdk.LeadoffType.Hz31_2)
+            await brainsync_sdk.disable_all_eeg_leadoff_channels(self.device_handle)
         except Exception as exc:
-            logger.info("leadoff type config skipped: %s", exc)
+            logger.info("disable_all_eeg_leadoff_channels skipped: %s", exc)
         try:
-            await brainsync_sdk.set_eeg_leadoff_current(self.device_handle,
-                                                        brainsync_sdk.LeadoffCurrent.Na6)
+            await brainsync_sdk.set_eeg_leadoff_channel_mask(self.device_handle, 0)
         except Exception as exc:
-            logger.info("leadoff current config skipped: %s", exc)
-        try:
-            await brainsync_sdk.set_eeg_leadoff_channels(self.device_handle, [True] * 8)
-        except Exception as exc:
-            logger.info("leadoff channel mask config skipped: %s", exc)
+            logger.info("leadoff mask=0 skipped: %s", exc)
 
         def _packet_status(packet) -> dict:
             try:

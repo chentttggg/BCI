@@ -109,3 +109,20 @@
   - Montage 对话框恢复 REF≠GND 校验；
   - 前端默认 `gnd_label` 改为 A2。
 - 影响范围：全部 ChannelConfig 相关文件。
+
+## D-009 实机诊断：仅 CH1 有信号，其余 7 通道为 -8388608 满量程负轨
+
+- 日期：2026-08-19
+- 变更者：EEG 分析工程师（agent）
+- 实机测试结果（COM3，fw v1.0.7.63）：
+  1. `EegSignalType.TestSignal` 时 8 个 ADC 通道全部输出正常测试波，
+     说明硬件 8 通道和 SDK 链路正常；
+  2. `EegSignalType.Normal` 且关闭 lead-off 后，raw `adc_values` 中
+     CH0/CH2–CH7 = -8388608（24-bit 负满量程），仅 CH1 有正常数据；
+  3. 阻抗检测显示多数通道为 1000 kΩ（开路/超量程），读数随触碰跳动。
+- 结论：不是 Gain、不是 µV 单位、不是 ChannelConfig 标签问题；
+  是电极线束/HDMI 连接器/电极-头皮接触问题，当前只有 1 个通道真正接通。
+- 处置：
+  - 工作站代码已强制 `Normal`、逐通道 Gain24、`disable_all_eeg_leadoff_channels`；
+  - 增加 `scripts/electrode_tap_test.py` 逐通道敲击测试；
+  - 实验前必须重新插紧 HDMI 电极线束，并确认 8 通道阻抗均 <10 kΩ。

@@ -1777,6 +1777,8 @@ class CompleteSensorGUI(QtWidgets.QMainWindow):
                 try:
                     await sdk.set_eeg_signal_type(self.handle, sdk.EegSignalType.Normal)
                     await sdk.set_eeg_signal_types(self.handle, [sdk.EegSignalType.Normal] * 8)
+                    await sdk.disable_all_eeg_leadoff_channels(self.handle)
+                    await sdk.set_eeg_leadoff_channel_mask(self.handle, 0)
                 except Exception as exc:
                     self.write_log(f"Normal EEG signal type setup failed: {exc}")
                 await sdk.subscribe_eeg_data(self.handle, 250, self.on_eeg_received)
@@ -1853,6 +1855,13 @@ class CompleteSensorGUI(QtWidgets.QMainWindow):
                     await sdk.set_eeg_gains(self.handle, [gain_enums[gain_idx]] * 8)
                 except Exception as exc:
                     self.write_log(f"Per-channel gain skipped: {exc}")
+                # Critical for dry caps: lead-off test current pins inactive inputs
+                # to the ADC negative rail. Disable it for normal EEG streaming.
+                try:
+                    await sdk.disable_all_eeg_leadoff_channels(self.handle)
+                    await sdk.set_eeg_leadoff_channel_mask(self.handle, 0)
+                except Exception as exc:
+                    self.write_log(f"Leadoff disable skipped: {exc}")
 
                 self.eeg_fs = sr_vals[sr_idx]
                 self.eeg_filter = SoftwareFilter(fs=self.eeg_fs)
