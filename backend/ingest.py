@@ -34,6 +34,44 @@ def scan_raw_dir(data_dir: str | Path) -> list[dict[str, Any]]:
     return rows
 
 
+def _raw_channel_qc(session) -> dict[str, Any]:
+    """Detect flat/railed/duplicated channels directly from the raw session.
+
+    This catches the failure mode seen with BrainSync EDF recordings where
+    several channels are bit-identical copies or saturated at the ADC rails.
+    """
+    import numpy as np
+
+    raw = np.asarray(session.raw, dtype=np.float64)
+    n_ch, n = raw.shape
+    issues = []
+    per_channel = []
+    for i, name in enumerate(session.ch_names):
+        x = raw[i]
+        ptp = float(np.ptp(x)) if n else 0.0
+        flat_frac = float(np.mean(np.diff(x) == 0)) if n > 1 else 1.0
+        lo, hi = float(np.min(x)), float(np.max(x))
+        rail_frac = float(np.mean((x <= lo + 1e-9) | (x >= hi - 1e-9))) if n else 1.0
+        per_channel.append({
+            "index": int(i), "label": str(name), "min": lo, "max": hi,
+            "ptp": ptp, "flat_frac": flat_frac, "rail_frac": rail_frac,
+        })
+        if flat_frac > 0.20:
+            issues.append(f"{name} flat_frac={flat_frac:.2%}")
+        if rail_frac > 0.20:
+            issues.append(f"{name} rail_frac={rail_frac:.2%}")
+    # Exact duplicate detection.
+    groups: dict[str, list[str]] = {}
+    for i, name in enumerate(session.ch_names):
+        key = raw[i].tobytes()
+        groups.setdefault(key, []).append(str(name))
+    duplicate_groups = [v for v in groups.values() if len(v) > 1]
+    if duplicate_groups:
+        issues.append(f"exact-duplicate channels: {duplicate_groups}")
+    return {"per_channel": per_channel, "distinct_channels": len(groups),
+            "duplicate_groups": duplicate_groups, "issues": issues}
+
+
 def validate_sessions(data_dir: str | Path, channel_cfg: ChannelConfig,
                       pre_cfg: PreprocessConfig) -> list[dict[str, Any]]:
     reports = []
@@ -46,6 +84,11 @@ def validate_sessions(data_dir: str | Path, channel_cfg: ChannelConfig,
             expected = sorted([c.upper() for c in channel_cfg.channels])
             actual = sorted([c.upper() for c in session.ch_names])
             channel_ok = actual == expected
+            raw_qc = _raw_channel_qc(session)
+            issues = [] if channel_ok else [f"channel labels {actual} != {expected}"]
+            if n_events == 0:
+                issues.append("no stim events")
+            issues.extend(raw_qc["issues"])
             report = {
                 "edf": row["relative_path"],
                 "sha256": row["sha256"],
@@ -57,9 +100,8 @@ def validate_sessions(data_dir: str | Path, channel_cfg: ChannelConfig,
                 "channel_labels_ok": channel_ok,
                 "expected_sfreq": pre_cfg.raw_sfreq,
                 "sample_rate_ok": bool(abs(session.sfreq - pre_cfg.raw_sfreq) < 0.5),
-                "issues": [] if (channel_ok and n_events > 0) else
-                    ([f"channel labels {actual} != {expected}"] if not channel_ok else []) +
-                    (["no stim events"] if n_events == 0 else []),
+                "raw_channel_qc": raw_qc,
+                "issues": issues,
             }
         except Exception as exc:
             report = {"edf": row["relative_path"], "sha256": row["sha256"],
