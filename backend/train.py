@@ -68,9 +68,21 @@ def build_prepared_data(data_dir: str | Path, pre_cfg: PreprocessConfig,
         if not sidecar.get("qc_pass", True):
             raise RuntimeError(
                 f"QC gate failed for {item['edf']}: {sidecar.get('qc', {}).get('issues')}")
+        # Exclude artifact-marked trials from supervised training. The full mask is
+        # retained in `sidecar` so no rejection is silent (Constitution Stage 4).
+        good_mask = meta["bad_trial"].to_numpy(dtype=bool) == 0
+        n_before = int(len(meta))
+        X = X[good_mask]
+        meta = meta[good_mask].reset_index(drop=True)
+        sidecar["n_trials_after_artifact_exclusion"] = int(len(meta))
+        sidecar["n_trials_excluded_for_training"] = n_before - int(len(meta))
         meta["session_id"] = item["edf"].stem
         meta["target_number"] = session.target_number
         meta["is_target"] = (meta["number"] == session.target_number).astype(int)
+        if len(meta) == 0:
+            logger.warning("Skipping %s: all epochs rejected by artifact QC", item["edf"])
+            prepared.sidecars.append(sidecar)
+            continue
         prepared.sidecars.append(sidecar)
         prepared.input_hashes[item["edf"].stem] = sha256_file(item["edf"])
         logger.info("Prepared %s: %d epochs, target=%s", item["edf"].name, len(meta), session.target_number)
