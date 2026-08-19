@@ -27,13 +27,13 @@
 ## 3. 前端操作流程
 
 1. 连接设备，确认固件版本；检查阻抗 < 10 kΩ（建议 < 5 kΩ）。
-2. 确认 `config/channel_config.json` 的通道顺序、REF/GND 与物理连线一致。
+2. 确认 `src/config/channel_config.json` 的通道顺序、REF/GND 与物理连线一致。
 3. 运行前端：
    ```bash
    # mock 自测
-   python -m frontend.main --mock --target 7 --output-dir data/raw
+   cd src && python -m frontend.main --mock --target 7 --output-dir ../Data
    # 真实设备
-   python -m frontend.main --device --subject P01 --session 001 --target 7 --output-dir data/raw
+   cd src && python -m frontend.main --device --subject P01 --session 001 --target 7 --output-dir ../Data
    ```
 4. 告知受试者规则：默想数字、默数目标出现次数、少眨眼、不动。
 5. 每个 block 结束后查看预测与 ERP 图；建议至少采集 4–6 个 block。

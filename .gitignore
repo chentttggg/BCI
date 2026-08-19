@@ -12,3 +12,6 @@ data/derived/*
 
 # provided SDK examples are read-only reference material
 brainsync-sdk-example-main/
+
+# experiment outputs
+Data/

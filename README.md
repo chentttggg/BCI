@@ -10,13 +10,15 @@ BrainSync BS8A 8 通道干电极（Fz, Cz, P3, Pz, P4, PO7, PO8, Oz）的
 ## 目录
 
 ```text
+Libs/                  依赖文件（requirements.txt / requirements.lock）
+src/                   所有需要运行的项目 Python 源码
+  frontend/            实验前端（刺激呈现 + BrainSync 采集 + EDF 记录 + LSL 打标）
+  backend/             ShallowConvNet 训练/推理/QC 后端
+  scripts/             数据检查 / 合成数据 / 电极敲击测试
+  config/              通道、预处理、训练参数 JSON
 guidance/              项目指导文件（mission/tech_stack/roadmap）
-config/                通道、预处理、训练参数 JSON
-frontend/              实验前端（刺激呈现 + BrainSync 采集 + EDF 记录 + LSL 打标）
-backend/               ShallowConvNet 训练/推理/QC 后端
-scripts/               合成数据生成器
-data/raw/              原始 EDF + events.jsonl + session.json（只读）
-data/derived/          派生数据（缓存、模型、报告、预测）
+Data/                  实验输出（按开始时间分文件夹）
+data/                  旧示例数据目录（只读）
 ```
 
 ## 1. 安装
@@ -24,7 +26,7 @@ data/derived/          派生数据（缓存、模型、报告、预测）
 ```bash
 python -m venv .venv311
 .venv311/Scripts/activate        # Windows；Linux/macOS 使用 source .venv311/bin/activate
-pip install -r requirements.txt
+pip install -r Libs/requirements.txt
 
 # 仅真实设备采集需要安装 BrainSync SDK：
 # pip install brainsync_sdk==0.3.0
@@ -33,14 +35,16 @@ pip install -r requirements.txt
 ## 2. 前端采集
 
 ```bash
+cd src
+
 # 真实设备，6 blocks x 5 次重复，受试者默想 7
 python -m frontend.main --device --target 7 --blocks 6 --repetitions 5 \
-    --output-dir data/raw --subject P01 --session 001
+    --output-dir ../Data --subject P01 --session 001
 
 # 无硬件 mock 自测（短范式，便于快速验证）
 python -m frontend.main --mock --headless --target 7 \
     --blocks 1 --repetitions 1 --stimulus-ms 20 --blank-ms 30 \
-    --output-dir data/raw
+    --output-dir ../Data
 ```
 
 前端默认参数：500 Hz、Gain24、刺激 200 ms、空白 1300 ms（SOA=1500 ms）、
@@ -67,7 +71,7 @@ EDF annotation 和 `events.jsonl`；前端用最近 12 个 EEG-LSL 时钟锚点�
 ## 3. 合成训练数据（可复现 demo）
 
 ```bash
-python -m scripts.make_synthetic_dataset --output-dir data/raw \
+python -m scripts.make_synthetic_dataset --output-dir ../data/raw \
     --sessions 6 --blocks 2 --repetitions 5 --seed 100
 ```
 
@@ -75,19 +79,19 @@ python -m scripts.make_synthetic_dataset --output-dir data/raw \
 
 ```bash
 # Stage 0：原始文件哈希入库与完整性检查
-python -m backend.main ingest --data-dir data/raw --manifest data/manifest.jsonl
+python -m backend.main ingest --data-dir ../data/raw --manifest ../data/manifest.jsonl
 
 # Stage 2-4：QC 报告（PSD、ERP、伪迹 mask）
-python -m backend.main report --data-dir data/raw --output-dir data/derived/reports
+python -m backend.main report --data-dir ../data/raw --output-dir ../data/derived/reports
 
 # Stage 5：训练 + 交叉验证 + 生产集成模型
-python -m backend.main train --data-dir data/raw \
-    --output-dir data/derived/models/guess_number --cv --production
+python -m backend.main train --data-dir ../data/raw \
+    --output-dir ../data/derived/models/guess_number --cv --production
 
 # 推理：对一个 session 猜测默想数字
 python -m backend.main predict \
-    --edf data/raw/sub-P01_ses-001_task-guessnumber_run-001_eeg.edf \
-    --model-dir data/derived/models/guess_number
+    --edf ../data/raw/sub-P01_ses-001_task-guessnumber_run-001_eeg.edf \
+    --model-dir ../data/derived/models/guess_number
 ```
 
 训练核心为 Schirrmeister et al. (2017) 的 **ShallowConvNet**：
@@ -117,15 +121,15 @@ block 置信度与 logit margin。默认使用多 seed 集成。
 
 ## 6. 注意事项
 
-- `config/channel_config.json` 是程序唯一读取的 Montage 源，必须与物理连线一致。
+- `src/config/channel_config.json` 是程序唯一读取的 Montage 源，必须与物理连线一致。
   Cz 是记录通道，不能按 BrainSync 说明书默认 REF=Cz。
   本套电极帽实际为 REF=A1（耳部参考）、GND=A2（耳部接地）。
   前端会显式构造 BrainSync SDK `ChannelConfig`（不使用 SDK 默认 C6/C4/... Montage）。
-  BrainSync GUI 兼容格式见 `config/brainsync_gui_channel_config.json`。
+  BrainSync GUI 兼容格式见 `src/config/brainsync_gui_channel_config.json`。
 - 通道 dropout 已按 8 通道空间覆盖风险调低：概率 0.05，且每次最多置零 1 个通道；
   导联脱落主要由 `leadoff_status` QC 处理，而不是靠高概率通道 dropout。
 - 真实采集前先查阻抗：建议每个通道 < 5 kΩ，门槛 < 10 kΩ。
 - 后端滤波顺序为：0.5 Hz 高通 → 50/100 Hz 陷波 → 20 Hz 低通 →
   250 Hz 降采样 → epoch(-0.2~1.0 s) → 基线(-0.2~0 s) → CAR →
-  可选 xDAWN 增强通道。所有参数在 `config/preprocessing.json`。
+  可选 xDAWN 增强通道。所有参数在 `src/config/preprocessing.json`。
 - 重大参数修改必须记录到 `guidance/tech_stack/decisions_log.md`。
