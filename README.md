@@ -50,6 +50,12 @@ python -m frontend.main --mock --headless --target 7 \
 - `sub-..._eeg_events.jsonl`：每个 marker 的 LSL/monotonic/采样点索引
 - `sub-..._eeg_session.json`：通道、REF/GND、目标数字、哈希、丢包统计
 
+**数字刺激自动对齐**：每个 `stim_on/{数字}` 会同时写入
+EDF annotation 和 `events.jsonl`；前端用最近 12 个 EEG-LSL 时钟锚点做一阶线性拟合，
+把 marker 的 LSL 时间戳自动换算成 EEG 采样点，并记录
+`alignment_source`、`recording_sample`、`edf_annotation_onset_sec`。
+`backend.ingest` 会输出 `marker_alignment`（EDF annotation 与事件日志的中位误差，单位 ms）。
+
 ## 3. 合成训练数据（可复现 demo）
 
 ```bash

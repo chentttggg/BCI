@@ -198,6 +198,15 @@ def _events_from_df(df: pd.DataFrame, sfreq: float) -> pd.DataFrame:
                 out[col] = pd.to_numeric(out[col], errors="coerce")
 
     cols = ["onset_sample", "onset_sec", "number", "block", "trial", "type"]
+    timing_cols = ["eeg_sample", "recording_sample", "recording_onset_sec",
+                   "edf_annotation_onset_sec", "alignment_source"]
+    for col in timing_cols:
+        if col in out.columns:
+            if col == "alignment_source":
+                out[col] = out[col].astype(str)
+            else:
+                out[col] = pd.to_numeric(out[col], errors="coerce")
+    cols += [c for c in timing_cols if c in out.columns]
     cols += [c for c in quality_cols if c in out.columns]
     out = out[cols].sort_values("onset_sample").reset_index(drop=True)
     return out

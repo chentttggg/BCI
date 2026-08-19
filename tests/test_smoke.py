@@ -153,3 +153,19 @@ def test_channel_dropout_capped() -> None:
         arr = x.numpy()[0]
         dropped = int(np.sum(np.all(arr == 0, axis=1)))
         assert dropped <= 1
+
+
+def test_edf_writer_preserves_all_annotations(tmp_path: Path) -> None:
+    from backend.io import _read_edf_annotations
+    from frontend.recorder import RawEDFRecorder
+
+    rec = RawEDFRecorder(tmp_path / "many_ann.edf", 500.0,
+                         ["Fz", "Cz", "P3", "Pz", "P4", "PO7", "PO8", "Oz"],
+                         participant_id="P01", session_id="001")
+    rec.write(np.zeros((8, 1000), dtype=np.float32))
+    for i in range(20):
+        rec.add_annotation(i * 0.1, 0.0, f"stim_on/{i % 9 + 1}")
+    rec.close()
+    ann = _read_edf_annotations(tmp_path / "many_ann.edf")
+    assert len(ann) == 20
+    assert ann.iloc[-1]["type"] == "stim_on/2"

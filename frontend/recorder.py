@@ -83,9 +83,21 @@ class RawEDFRecorder:
         writer.setPatientName(self.participant_id)
         writer.setRecordingAdditional(self.recording_additional)
         writer.setStartdatetime(datetime_from_utcnow())
-        writer.writeSamples(data.astype(np.float64))
+        # pyedflib attaches an annotation to the currently written data record.
+        # Therefore samples are written up to each annotation onset, then the
+        # annotation is inserted, then the remaining samples are written.
+        n_total = int(data.shape[1])
+        cursor = 0
         for ann in sorted(self._annotations, key=lambda x: x["onset_sec"]):
-            writer.writeAnnotation(ann["onset_sec"], ann["duration_sec"], ann["description"])
+            next_pos = int(round(float(ann["onset_sec"]) * self.sfreq))
+            next_pos = max(cursor, min(n_total, next_pos))
+            if next_pos > cursor:
+                writer.writeSamples(data[:, cursor:next_pos].astype(np.float64))
+                cursor = next_pos
+            writer.writeAnnotation(float(ann["onset_sec"]), float(ann["duration_sec"]),
+                                   str(ann["description"]))
+        if cursor < n_total:
+            writer.writeSamples(data[:, cursor:].astype(np.float64))
         writer.close()
         os.replace(tmp_path, self.path)
 

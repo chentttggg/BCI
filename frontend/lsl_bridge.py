@@ -18,8 +18,8 @@ class NullMarkerOutlet:
 
 
 class NullEEGOutlet:
-    def push_chunk(self, samples: Any) -> None:
-        pass
+    def push_chunk(self, samples: Any) -> float | None:
+        return None
 
     def close(self) -> None:
         pass
@@ -44,11 +44,12 @@ class EEGOutlet:
         self.outlet = outlet
         self.local_clock = local_clock
 
-    def push_chunk(self, samples: Any) -> None:
+    def push_chunk(self, samples: Any) -> float | None:
         n = samples.shape[1]
         stamps = [self.local_clock() for _ in range(n)]
         rows = [[float(v) for v in samples[:, i]] for i in range(n)]
         self.outlet.push_chunk(rows, stamps)
+        return float(stamps[0]) if stamps else None
 
     def close(self) -> None:
         pass

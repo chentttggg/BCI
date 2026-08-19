@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import subprocess
+import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -87,7 +88,9 @@ class ExperimentController:
         self._stim_count = 0
         self._current_visual: str | None = None
         self._latest_samples: list[np.ndarray] = []
-        self._latest_lock = __import__("threading").Lock()
+        self._latest_lock = threading.Lock()
+        self._eeg_clock_refs: list[tuple[int, float]] = []
+        self._clock_lock = threading.Lock()
         self.session_metadata: dict[str, Any] = {}
         self._initialise_session_metadata()
 
@@ -135,10 +138,17 @@ class ExperimentController:
             self.recorder.write(samples)
         except Exception:
             logger.exception("raw recorder write failed")
+        lsl_ts = None
         try:
-            self.eeg_outlet.push_chunk(samples)
+            lsl_ts = self.eeg_outlet.push_chunk(samples)
         except Exception:
             logger.debug("LSL EEG push failed", exc_info=True)
+        if lsl_ts is not None:
+            rel_sample = max(0, int(start_sample - self._sample_count_at_start))
+            with self._clock_lock:
+                self._eeg_clock_refs.append((rel_sample, float(lsl_ts)))
+                if len(self._eeg_clock_refs) > 12:
+                    self._eeg_clock_refs = self._eeg_clock_refs[-12:]
         with self._latest_lock:
             self._latest_samples.append(np.asarray(samples, dtype=np.float32))
             # Keep only the most recent ~2 seconds for the GUI.
@@ -166,17 +176,35 @@ class ExperimentController:
             except Exception:
                 logger.exception("visual callback failed")
 
+    def _sample_from_lsl(self, lsl_sec: float, fallback: int) -> tuple[int, str]:
+        if not np.isfinite(lsl_sec):
+            return int(fallback), "monotonic_estimate"
+        with self._clock_lock:
+            refs = list(self._eeg_clock_refs)
+        if len(refs) >= 2:
+            xs = np.asarray([r[1] for r in refs], dtype=np.float64)
+            ys = np.asarray([r[0] for r in refs], dtype=np.float64)
+            slope, intercept = np.polyfit(xs, ys, 1)
+            sample = int(round(intercept + slope * float(lsl_sec)))
+            return max(0, sample), "lsl_linear_fit"
+        if refs:
+            rel, ref_lsl = refs[-1]
+            sample = int(round(rel + (float(lsl_sec) - ref_lsl) * self.cfg.sfreq))
+            return max(0, sample), "lsl_last_anchor"
+        return int(fallback), "monotonic_estimate"
+
     def _push_marker(self, text: str, duration_sec: float = 0.0,
-                     sample_onset: int | None = None) -> float:
+                     sample_onset: int | None = None) -> tuple[float, int, str]:
         try:
             lsl_sec = self.marker_outlet.push(text)
         except Exception:
             lsl_sec = float("nan")
         if sample_onset is None:
             sample_onset = int(self.acquirer.sample_count)
+        sample, source = self._sample_from_lsl(lsl_sec, sample_onset)
         self.recorder.add_annotation(
-            max(0.0, sample_onset / self.cfg.sfreq), duration_sec, text)
-        return lsl_sec
+            max(0.0, sample / self.cfg.sfreq), duration_sec, text)
+        return float(lsl_sec), int(sample), source
 
     def _on_timeline_event(self, event: TimelineEvent, now_sec: float) -> None:
         marker_text = ""
@@ -216,14 +244,18 @@ class ExperimentController:
         # Visual change first, marker immediately afterwards.
         event_abs_mono = (self._start_monotonic or 0.0) + now_sec
         estimated = getattr(self.acquirer, "estimated_sample_count", None)
-        sample = int(estimated(event_abs_mono)) if estimated is not None else int(self.acquirer.sample_count)
+        fallback_sample = int(estimated(event_abs_mono)) if estimated is not None else int(self.acquirer.sample_count)
         self._set_visual(visual)
-        lsl_sec = self._push_marker(marker_text, duration, sample_onset=sample)
+        lsl_sec, sample, alignment_source = self._push_marker(
+            marker_text, duration, sample_onset=fallback_sample)
+        recording_sample = max(0, sample - self._sample_count_at_start)
+        recording_onset_sec = max(0.0, recording_sample / self.cfg.sfreq)
         self._event_seq += 1
         append_jsonl(self.paths.events, {
             "seq": self._event_seq,
             "type": marker_text,
             "number": event.number,
+            "digit": event.number,
             "block": event.block,
             "trial": event.trial,
             "duration_sec": duration,
@@ -231,9 +263,11 @@ class ExperimentController:
             "actual_onset_sec": now_sec,
             "monotonic_sec": now_sec,
             "lsl_sec": lsl_sec,
+            "alignment_source": alignment_source,
             "eeg_sample": sample,
-            "recording_sample": max(0, sample - self._sample_count_at_start),
-            "recording_onset_sec": max(0.0, (sample - self._sample_count_at_start) / self.cfg.sfreq),
+            "recording_sample": recording_sample,
+            "recording_onset_sec": recording_onset_sec,
+            "edf_annotation_onset_sec": recording_onset_sec,
             **getattr(self.acquirer, "last_status", {}),
         })
 
@@ -314,6 +348,12 @@ class ExperimentController:
             "sdk_channel_config": getattr(self.acquirer, "channel_config_summary", {}),
             "device_quality": getattr(self.acquirer, "quality_stats", {}),
             "last_packet_status": getattr(self.acquirer, "last_status", {}),
+            "event_alignment": {
+                "method": "lsl-marker-to-eeg-sample linear fit",
+                "sfreq": int(self.cfg.sfreq),
+                "clock_anchors": [{"recording_sample": int(smp), "lsl_sec": float(ts)}
+                                  for smp, ts in self._eeg_clock_refs[-5:]],
+            },
             "last_error": str(getattr(self.acquirer, "last_error", None) or ""),
         })
         atomic_write_json(self.paths.session, final)

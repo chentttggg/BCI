@@ -5,10 +5,12 @@ import argparse
 import json
 import logging
 from pathlib import Path
+
+import numpy as np
 from typing import Any
 
 from .config import ChannelConfig, PreprocessConfig
-from .io import load_session
+from .io import _read_edf_annotations, load_session
 from .utils import atomic_write_json, configure_logging, sha256_file, utc_now_iso
 
 logger = logging.getLogger("backend.ingest")
@@ -85,6 +87,25 @@ def validate_sessions(data_dir: str | Path, channel_cfg: ChannelConfig,
             actual = sorted([c.upper() for c in session.ch_names])
             channel_ok = actual == expected
             raw_qc = _raw_channel_qc(session)
+            alignment = None
+            if n_events > 0:
+                try:
+                    ann = _read_edf_annotations(row["path"])
+                    ann_stim = ann[ann["type"].astype(str).str.startswith("stim_on")].copy()
+                    ann_stim = ann_stim.sort_values("onset_sec").reset_index(drop=True)
+                    stim = session.events[session.events["type"].str.startswith("stim_on")].copy()
+                    stim = stim.sort_values("recording_onset_sec").reset_index(drop=True)
+                    n_match = min(len(stim), len(ann_stim))
+                    if n_match > 0:
+                        err_ms = (stim["recording_onset_sec"].iloc[:n_match].to_numpy() -
+                                  ann_stim["onset_sec"].iloc[:n_match].to_numpy()) * 1000.0
+                        alignment = {
+                            "n_matched": int(n_match),
+                            "median_abs_ms": float(np.median(np.abs(err_ms))),
+                            "max_abs_ms": float(np.max(np.abs(err_ms))),
+                        }
+                except Exception:
+                    alignment = None
             issues = [] if channel_ok else [f"channel labels {actual} != {expected}"]
             if n_events == 0:
                 issues.append("no stim events")
@@ -101,6 +122,7 @@ def validate_sessions(data_dir: str | Path, channel_cfg: ChannelConfig,
                 "expected_sfreq": pre_cfg.raw_sfreq,
                 "sample_rate_ok": bool(abs(session.sfreq - pre_cfg.raw_sfreq) < 0.5),
                 "raw_channel_qc": raw_qc,
+                "marker_alignment": alignment,
                 "issues": issues,
             }
         except Exception as exc:

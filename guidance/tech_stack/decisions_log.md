@@ -126,3 +126,21 @@
   - 工作站代码已强制 `Normal`、逐通道 Gain24、`disable_all_eeg_leadoff_channels`；
   - 增加 `scripts/electrode_tap_test.py` 逐通道敲击测试；
   - 实验前必须重新插紧 HDMI 电极线束，并确认 8 通道阻抗均 <10 kΩ。
+
+## D-010 数字刺激事件自动对齐到 EEG 采样点
+
+- 日期：2026-08-19
+- 变更者：EEG 分析工程师（agent）
+- 变更理由：需要把每个数字的 stim_on/off 信息可靠写入 EDF，并把
+  LSL marker 时间戳自动对齐到 EEG 采样时钟。
+- 变更内容：
+  1. `EEGOutlet.push_chunk` 返回第一个样本的 LSL 时间戳；
+  2. `ExperimentController` 维护最近 12 个 (recording_sample, lsl_sec) 锚点，
+     marker 到来时做一阶线性拟合，将 LSL marker 时间转成 recording_sample；
+  3. events.jsonl 新增 `digit`、`alignment_source`、`edf_annotation_onset_sec`；
+  4. `RawEDFRecorder` 修复 EDF 多 annotation 写入：按 annotation onset
+     分段写 samples，避免 pyedflib 只保留前 2 个 annotation；
+  5. `backend.ingest` 输出 `marker_alignment`（事件日志 vs EDF annotation 误差）。
+- 影响范围：frontend/lsl_bridge.py、experiment.py、recorder.py；
+  backend/io.py、ingest.py；scripts/make_synthetic_dataset.py。
+- 回滚：见 Git 历史提交。
