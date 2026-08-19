@@ -93,6 +93,51 @@ class BackendWorker(QThread):
         self.done.emit(code)
 
 
+class DeviceCheckWorker(QThread):
+    result = Signal(str)
+
+    def __init__(self, mode: str, ble_name: str) -> None:
+        super().__init__()
+        self.mode = mode
+        self.ble_name = ble_name
+
+    def run(self) -> None:
+        try:
+            if self.mode == "ble":
+                self.result.emit(self._check_ble())
+            else:
+                import brainsync_sdk as sdk
+                ports = sdk.list_brainsync_ports()
+                if not ports:
+                    self.result.emit("未发现 BrainSync USB 设备")
+                else:
+                    self.result.emit(f"发现设备: {', '.join(map(str, ports))}")
+        except Exception as exc:
+            self.result.emit(f"检查失败: {exc}")
+
+    def _check_ble(self) -> str:
+        import asyncio
+
+        import brainsync_sdk as sdk
+
+        async def run() -> str:
+            sdk.ble_init_adapter()
+            await asyncio.sleep(1.0)
+            handle = await sdk.open_brainsync_ble(self.ble_name)
+            try:
+                version = await sdk.get_firmware_version(handle)
+                if isinstance(version, dict):
+                    return f"BLE 已连接 {self.ble_name} | {version.get('device_type', 'BrainSync')} "                            f"SW:{version.get('sw_version', 'N/A')}"
+                return f"BLE 已连接 {self.ble_name}"
+            finally:
+                try:
+                    await sdk.close_device(handle)
+                except Exception:
+                    pass
+
+        return asyncio.run(run())
+
+
 class StimulusWindow(QWidget):
     """Full-screen black stimulus surface used during the experiment."""
 
@@ -277,24 +322,12 @@ class ResearcherWindow(QMainWindow):
             self.ed_predict_edf.setText(path)
 
     def check_device(self) -> None:
-        def work() -> None:
-            try:
-                import brainsync_sdk as sdk
-                if self.cb_mode.currentIndex() == 1:
-                    sdk.ble_init_adapter()
-                    self.lbl_device.setText(
-                        f"蓝牙适配器已初始化；开始实验时将连接 {self.ed_ble_name.text().strip() or 'BrainSync'}")
-                    return
-                ports = sdk.list_brainsync_ports()
-                if not ports:
-                    self.lbl_device.setText("未发现 BrainSync USB 设备")
-                    return
-                self.lbl_device.setText(f"发现设备: {', '.join(map(str, ports))}")
-            except Exception as exc:
-                self.lbl_device.setText(f"检查失败: {exc}")
-        # Keep the UI responsive.
-        from PySide6.QtCore import QTimer
-        QTimer.singleShot(0, work)
+        mode = "ble" if self.cb_mode.currentIndex() == 1 else "usb"
+        ble_name = self.ed_ble_name.text().strip() or "BrainSync"
+        self.lbl_device.setText("检查中...")
+        self._device_check = DeviceCheckWorker(mode, ble_name)
+        self._device_check.result.connect(self.lbl_device.setText)
+        self._device_check.start()
 
     def _experiment_config(self) -> tuple[ExperimentConfig, ParadigmConfig]:
         montage = read_montage()
