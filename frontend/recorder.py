@@ -93,6 +93,7 @@ class RawEDFRecorder:
             "edf_path": str(self.path.resolve()),
             "sha256": sha256_file(self.path),
             "sfreq": float(self.sfreq),
+            "unit": "uV",
             "channels": self.channels,
             "n_samples": int(data.shape[1]),
             "n_annotations": int(len(self._annotations)),

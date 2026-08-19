@@ -28,6 +28,7 @@ def read_montage(path: str | Path = "config/channel_config.json") -> dict[str, A
         "indices": indices,
         "ref_label": str(obj.get("ref_label", "A1")),
         "gnd_label": str(obj.get("gnd_label", "A2")),
+        "unit": str(obj.get("unit", "uV")),
     }
 
 

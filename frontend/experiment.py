@@ -37,6 +37,7 @@ class ExperimentConfig:
     target_number: int = 7
     sfreq: int = 500
     gain: str = "Gain24"
+    unit: str = "uV"
     channels: list[str] = field(default_factory=lambda: ["Fz", "Cz", "P3", "Pz", "P4", "PO7", "PO8", "Oz"])
     ref_label: str = "A1"
     gnd_label: str = "A2"
@@ -98,6 +99,7 @@ class ExperimentController:
             "target_number": int(self.cfg.target_number),
             "sfreq": int(self.cfg.sfreq),
             "gain": self.cfg.gain,
+            "unit": self.cfg.unit,
             "channels": list(self.cfg.channels),
             "ref_label": self.cfg.ref_label,
             "gnd_label": self.cfg.gnd_label,
