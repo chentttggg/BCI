@@ -82,6 +82,11 @@ guess-number-backend train --data-dir data/raw     --output-dir data/derived/mod
 guess-number-backend predict     --edf data/raw/sub-P01_ses-001_task-guessnumber_run-001_eeg.edf     --model-dir data/derived/models/guess_number
 ```
 
+## 工作台记录路径
+
+工作站 `multimodal_hub` 的默认 EDF 保存目录已指向项目根目录下的 `Data/`。
+录制时 SDK 会在该目录生成 `streaming_EEG_*.edf` 文件。
+
 ## 常用脚本
 
 ```bash
