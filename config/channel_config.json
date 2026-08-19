@@ -35,6 +35,7 @@
     }
   ],
   "ref_label": "A1",
-  "gnd_label": "Fpz",
-  "note": "物理连线必须与本配置一致。Cz 已作为记录通道，因此不能使用说明书默认 REF=Cz。"
+  "gnd_label": "A1",
+  "ref_gnd_combined": true,
+  "note": "A1 为耳部接地/REF 共用电极；8 个 EEG 通道按 0..7 顺序绑定 Fz,Cz,P3,Pz,P4,PO7,PO8,Oz。不使用说明书默认 Fpz/AFz。"
 }

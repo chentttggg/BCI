@@ -97,14 +97,19 @@ block 置信度与 logit margin。默认使用多 seed 集成。
 2. 人工看平均 ERP → ShallowConvNet 单试次概率 + block 级聚合；
 3. EDF/LSL/JSONL 三重事件记录，事件样本索引可追溯；
 4. 保守伪迹阈值检测（只标记，不静默删除）；
-5. 类别不平衡 focal loss、加权采样、时间/幅度/通道 dropout 增强；
+5. 类别不平衡 focal loss、加权采样、时间/幅度增强 + 受控通道 dropout（0.05，最多丢 1 通道）；
 6. 按 session 的 LOSO 交叉验证 + 多 seed 集成，降低单人小样本方差；
 7. 算力优先级低：原始 500 Hz 保留，模型输入 250 Hz，集成不压缩。
 
 ## 6. 注意事项
 
-- `config/channel_config.json` 必须与物理连线一致。Cz 是记录通道，
-  不能按 BrainSync 说明书默认 Cz 作 REF；默认 REF=A1、GND=Fpz。
+- `config/channel_config.json` 是程序唯一读取的 Montage 源，必须与物理连线一致。
+  Cz 是记录通道，不能按 BrainSync 说明书默认 REF=Cz。
+  本套电极帽实际为 A1 耳部接地/REF 共用电极，因此 REF=GND=A1（不使用说明书 Fpz）。
+  前端会显式构造 BrainSync SDK `ChannelConfig`（不使用 SDK 默认 C6/C4/... Montage）。
+  BrainSync GUI 兼容格式见 `config/brainsync_gui_channel_config.json`。
+- 通道 dropout 已按 8 通道空间覆盖风险调低：概率 0.05，且每次最多置零 1 个通道；
+  导联脱落主要由 `leadoff_status` QC 处理，而不是靠高概率通道 dropout。
 - 真实采集前先查阻抗：建议每个通道 < 5 kΩ，门槛 < 10 kΩ。
 - 后端滤波顺序为：0.5 Hz 高通 → 50/100 Hz 陷波 → 20 Hz 低通 →
   250 Hz 降采样 → epoch(-0.2~1.0 s) → 基线(-0.2~0 s) → CAR →

@@ -76,7 +76,8 @@ class AugmentationConfig:
     enable: bool = True
     time_shift_samples: int = 20
     amplitude_scale_range: list[float] = field(default_factory=lambda: [0.8, 1.2])
-    channel_dropout_prob: float = 0.15
+    channel_dropout_prob: float = 0.05
+    channel_dropout_max_channels: int = 1
     noise_std: float = 0.20
     mixup_alpha: float = 0.20
 

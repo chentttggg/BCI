@@ -34,9 +34,10 @@
       0.8,
       1.2
     ],
-    "channel_dropout_prob": 0.15,
+    "channel_dropout_prob": 0.05,
     "noise_std": 0.2,
-    "mixup_alpha": 0.2
+    "mixup_alpha": 0.2,
+    "channel_dropout_max_channels": 1
   },
   "pos_weight_mode": "balanced",
   "note": "ShallowConvNet 核心；算力优先级低，使用多 seed 集成提高准确率。"

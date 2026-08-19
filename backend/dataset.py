@@ -48,7 +48,9 @@ class TrialDataset:
 
     def __init__(self, X: np.ndarray, y: np.ndarray, train: bool = True,
                  time_shift_samples: int = 0, amplitude_scale_range: tuple[float, float] = (1.0, 1.0),
-                 channel_dropout_prob: float = 0.0, noise_std: float = 0.0,
+                 channel_dropout_prob: float = 0.0,
+                 channel_dropout_max_channels: int = 1,
+                 noise_std: float = 0.0,
                  mixup_alpha: float = 0.0, seed: int | None = None) -> None:
         self.X = np.asarray(X, dtype=np.float32)
         self.y = np.asarray(y, dtype=np.float32)
@@ -56,6 +58,7 @@ class TrialDataset:
         self.time_shift_samples = int(time_shift_samples)
         self.amp_range = tuple(amplitude_scale_range)
         self.channel_dropout_prob = float(channel_dropout_prob)
+        self.channel_dropout_max_channels = int(max(1, channel_dropout_max_channels))
         self.noise_std = float(noise_std)
         self.mixup_alpha = float(mixup_alpha)
         self.rng = np.random.default_rng(seed)
@@ -90,7 +93,16 @@ class TrialDataset:
         if self.noise_std > 0:
             x = x + float(self.noise_std) * self.rng.standard_normal(x.shape).astype(np.float32)
         if self.channel_dropout_prob > 0:
-            mask = self.rng.random(x.shape[0]) > self.channel_dropout_prob
-            if not mask.all():
+            n_channels = x.shape[0]
+            drop_mask = self.rng.random(n_channels) < self.channel_dropout_prob
+            if drop_mask.any():
+                # With only 8 original channels (+3 xDAWN), dropping many entire
+                # electrodes at once is too destructive: cap at one channel.
+                drop_idx = np.flatnonzero(drop_mask)
+                if len(drop_idx) > self.channel_dropout_max_channels:
+                    drop_idx = self.rng.choice(
+                        drop_idx, size=self.channel_dropout_max_channels, replace=False)
+                mask = np.ones(n_channels, dtype=np.float32)
+                mask[drop_idx] = 0.0
                 x = x * mask[:, None].astype(np.float32)
         return x

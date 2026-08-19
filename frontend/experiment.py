@@ -39,7 +39,7 @@ class ExperimentConfig:
     gain: str = "Gain24"
     channels: list[str] = field(default_factory=lambda: ["Fz", "Cz", "P3", "Pz", "P4", "PO7", "PO8", "Oz"])
     ref_label: str = "A1"
-    gnd_label: str = "Fpz"
+    gnd_label: str = "A1"
     acquisition_mode: str = "mock"
     output_dir: str | Path = "data/raw"
     seed: int = 0
@@ -309,6 +309,7 @@ class ExperimentController:
             "events_jsonl_sha256": sha256_file(self.paths.events) if self.paths.events.exists() else None,
             "loss_stats": loss_stats,
             "device_batch_size": getattr(self.acquirer, "batch_size", None),
+            "sdk_channel_config": getattr(self.acquirer, "channel_config_summary", {}),
             "device_quality": getattr(self.acquirer, "quality_stats", {}),
             "last_packet_status": getattr(self.acquirer, "last_status", {}),
             "last_error": str(getattr(self.acquirer, "last_error", None) or ""),

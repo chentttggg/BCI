@@ -22,6 +22,7 @@ from typing import Any
 import numpy as np
 
 from .acquisition import create_acquirer
+from .channel_config import build_sdk_channel_config
 from .experiment import ExperimentConfig, ExperimentController
 from .lsl_bridge import create_eeg_outlet, create_marker_outlet
 from .mock_eeg import build_stimulus_list
@@ -35,7 +36,7 @@ def _read_channels(path: str | Path) -> tuple[list[str], str, str]:
         obj = json.load(f)
     channels = [str(item["label"]) for item in obj["eeg_channels"]]
     ref = str(obj.get("ref_label", "A1"))
-    gnd = str(obj.get("gnd_label", "Fpz"))
+    gnd = str(obj.get("gnd_label", "A1"))
     return channels, ref, gnd
 
 
@@ -109,8 +110,10 @@ def _run_headless(args: argparse.Namespace) -> int:
     )
     paradigm = Paradigm(paradigm_cfg)
     stimuli = build_stimulus_list(paradigm.schedule_records(), args.sfreq)
+    sdk_channel_config = build_sdk_channel_config(args.channel_config)
     acquirer = create_acquirer(cfg.acquisition_mode, args.sfreq, channels, stimuli,
-                               args.target, seed=args.seed)
+                               args.target, seed=args.seed,
+                               sdk_channel_config=sdk_channel_config)
     marker_outlet = None if args.disable_lsl else create_marker_outlet()
     eeg_outlet = None if args.disable_lsl else create_eeg_outlet(args.sfreq, channels)
     if marker_outlet is None:
@@ -167,8 +170,10 @@ def _run_gui(args: argparse.Namespace) -> int:
     )
     paradigm = Paradigm(paradigm_cfg)
     stimuli = build_stimulus_list(paradigm.schedule_records(), args.sfreq)
+    sdk_channel_config = build_sdk_channel_config(args.channel_config)
     acquirer = create_acquirer(cfg.acquisition_mode, args.sfreq, channels, stimuli,
-                               args.target, seed=args.seed)
+                               args.target, seed=args.seed,
+                               sdk_channel_config=sdk_channel_config)
     marker_outlet = None if args.disable_lsl else create_marker_outlet()
     eeg_outlet = None if args.disable_lsl else create_eeg_outlet(args.sfreq, channels)
     if marker_outlet is None:

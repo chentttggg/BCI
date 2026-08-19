@@ -32,6 +32,10 @@ class MockAcquirer:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self.callback: ChunkCallback | None = None
+        self.channel_config_summary: dict = {
+            "labels": list(channels), "ref_label": "A1", "gnd_label": "A1",
+            "active_mask": 255, "ref_gnd_combined": True, "source": "mock",
+        }
         self.last_status: dict = {
             "leadoff_status": 255,
             "trig_in_status": 0,
@@ -94,9 +98,11 @@ class BrainSyncAcquirer:
     """Real BrainSync BS8A acquirer. Runs the async SDK API in a worker thread."""
 
     def __init__(self, sfreq: int = 500, gain: str = "Gain24", batch_size: int = 250,
-                 channels: list[str] | None = None) -> None:
+                 channels: list[str] | None = None,
+                 sdk_channel_config: object | None = None) -> None:
         self.sfreq = int(sfreq)
         self.gain = gain
+        self.sdk_channel_config = sdk_channel_config
         # BrainSync SDK requires subscribe_eeg_data batch_size to be a multiple
         # of 250. Round up silently and record the effective value.
         self.batch_size = int(batch_size)
@@ -112,6 +118,7 @@ class BrainSyncAcquirer:
         self.device_handle = None
         self.loss_stats: dict = {}
         self.last_error: Exception | None = None
+        self.channel_config_summary: dict = {}
         self.last_status: dict = {
             "leadoff_status": 255,
             "trig_in_status": 0,
@@ -177,6 +184,17 @@ class BrainSyncAcquirer:
         rate_enum = rate_map.get(self.sfreq, brainsync_sdk.EegSampleRate.Hz500)
 
         self.device_handle = await brainsync_sdk.open_brainsync_serial()
+        if self.sdk_channel_config is not None:
+            self.channel_config_summary = {
+                "labels": list(getattr(self.sdk_channel_config, "labels", [])),
+                "ref_label": getattr(self.sdk_channel_config, "ref_label", None),
+                "gnd_label": getattr(self.sdk_channel_config, "gnd_label", None),
+                "active_mask": getattr(self.sdk_channel_config, "active_mask", None),
+            }
+            logger.info("BrainSync ChannelConfig: labels=%s ref=%s gnd=%s",
+                        self.channel_config_summary["labels"],
+                        self.channel_config_summary["ref_label"],
+                        self.channel_config_summary["gnd_label"])
         await brainsync_sdk.set_eeg_sample_rate(self.device_handle, rate_enum)
         await brainsync_sdk.set_eeg_gain(self.device_handle, gain_enum)
         await brainsync_sdk.set_eeg_signal_type(self.device_handle, brainsync_sdk.EegSignalType.Normal)
@@ -294,9 +312,11 @@ class BrainSyncAcquirer:
 
 
 def create_acquirer(mode: str, sfreq: int, channels: list[str], stimuli: list,
-                    target_number: int, seed: int) -> object:
+                    target_number: int, seed: int,
+                    sdk_channel_config: object | None = None) -> object:
     if mode == "mock":
         return MockAcquirer(sfreq, channels, stimuli, target_number, seed=seed)
     if mode == "device":
-        return BrainSyncAcquirer(sfreq=sfreq, channels=channels)
+        return BrainSyncAcquirer(sfreq=sfreq, channels=channels,
+                                 sdk_channel_config=sdk_channel_config)
     raise ValueError(f"Unknown acquisition mode: {mode!r}")

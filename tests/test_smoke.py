@@ -138,3 +138,18 @@ def test_leadoff_status_marks_bad_trial(tmp_path: Path) -> None:
     # which proves the gate is enforced rather than silently skipped.
     assert sidecar["qc_pass"] is False
     assert "exceeds gate" in str(sidecar["qc"]["issues"])
+
+
+def test_channel_dropout_capped() -> None:
+    from backend.dataset import TrialDataset
+
+    rng = np.random.default_rng(9)
+    X = rng.normal(size=(20, 11, 40)).astype(np.float32)
+    y = np.zeros(20, dtype=np.float32)
+    ds = TrialDataset(X, y, train=True, channel_dropout_prob=0.9,
+                      channel_dropout_max_channels=1, seed=0)
+    for i in range(10):
+        x, _ = ds[i]
+        arr = x.numpy()[0]
+        dropped = int(np.sum(np.all(arr == 0, axis=1)))
+        assert dropped <= 1

@@ -57,3 +57,40 @@
   xdawn.py、dataset.py、train.py、model.py、scoring.py、config/*.json。
 - 回滚：将 `config/preprocessing.json` 的 `xdawn_enable=false`、`lowpass_hz=40`；
   将 `config/train.json` 的 `mixup_alpha=0`、`temporal_filters=40`、`kernel_time_s=0.10`。
+
+## D-006 BrainSync ChannelConfig 显式绑定项目 Montage + 降低通道 dropout
+
+- 日期：2026-08-19
+- 变更者：EEG 分析工程师（agent）
+- 变更理由：
+  1. BrainSync SDK `ChannelConfig.default_8ch` 是 C6/C4/FC4/...，与项目无关；
+     本项目必须在代码中显式构造 `ChannelConfig(labels=Fz,Cz,P3,Pz,P4,PO7,PO8,Oz,
+     ref_label=A1, gnd_label=Fpz)`，避免未来误用默认 Montage。
+  2. 项目只有 8 个原始电极（xDAWN 增强后 11 通道），0.15 的独立通道 dropout
+     会较频繁地把 1–2 个真实电极整体置零，空间信息损失过大；而导联脱落已经由
+     `leadoff_status` QC 处理。因此将通道 dropout 降至 0.05，并限制每次最多
+     置零 1 个通道，保留 7/8 以上的空间覆盖。
+- 影响范围：
+  - 新增 `frontend/channel_config.py`、`config/brainsync_gui_channel_config.json`；
+  - `frontend/main.py` 构建并传入 SDK ChannelConfig；
+  - `frontend/acquisition.py` 记录 sdk_channel_config；
+  - `backend/dataset.py` 增加 `channel_dropout_max_channels=1`；
+  - `config/train.json` `channel_dropout_prob=0.05`。
+- 回滚：`channel_dropout_prob=0.15` 且删除 max-channel 限制即可。
+
+## D-007 按实际硬件修正 REF/GND：A1 耳部接地/REF 共用
+
+- 日期：2026-08-19
+- 变更者：EEG 分析工程师（agent）
+- 变更理由：用户确认本套电极帽不使用说明书默认 Fpz/AFz 接地；
+  A1 是接在耳朵上的接地/REF 共用电极。
+- 变更内容：
+  - `config/channel_config.json`：`ref_label=A1`、`gnd_label=A1`、
+    `ref_gnd_combined=true`；
+  - EEG 通道仍按工作站 Channel 0..7 顺序绑定
+    Fz, Cz, P3, Pz, P4, PO7, PO8, Oz；
+  - `config/brainsync_gui_channel_config.json` 同步更新；
+  - 前端默认 `gnd_label` 改为 A1。
+- 影响范围：channel_config、前端 session 元数据、指导文档。
+- 回滚：若后续硬件增加独立 GND，修改 `config/channel_config.json` 的
+  `gnd_label` 与 `ref_gnd_combined=false`。

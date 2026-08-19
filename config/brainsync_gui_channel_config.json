@@ -1,0 +1,75 @@
+{
+  "schema": "brainsync-gui-channel-config-v1",
+  "channel_config": {
+    "active_mask": 255,
+    "labels": [
+      "Fz",
+      "Cz",
+      "P3",
+      "Pz",
+      "P4",
+      "PO7",
+      "PO8",
+      "Oz"
+    ],
+    "eeg": [
+      {
+        "label": "Fz",
+        "channel": 0
+      },
+      {
+        "label": "Cz",
+        "channel": 1
+      },
+      {
+        "label": "P3",
+        "channel": 2
+      },
+      {
+        "label": "Pz",
+        "channel": 3
+      },
+      {
+        "label": "P4",
+        "channel": 4
+      },
+      {
+        "label": "PO7",
+        "channel": 5
+      },
+      {
+        "label": "PO8",
+        "channel": 6
+      },
+      {
+        "label": "Oz",
+        "channel": 7
+      }
+    ],
+    "stim": [],
+    "ref_label": "A1",
+    "gnd_label": "A1"
+  },
+  "trigger_hub": {
+    "inputs": [
+      {
+        "channel": 0,
+        "name": "PD",
+        "enabled": true,
+        "threshold": 500
+      },
+      {
+        "channel": 1,
+        "name": "AUDIO",
+        "enabled": false,
+        "threshold": 500
+      },
+      {
+        "channel": 2,
+        "name": "KEY",
+        "enabled": true,
+        "threshold": 500
+      }
+    ]
+  }
+}
