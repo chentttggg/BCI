@@ -59,9 +59,11 @@ class MockAcquirer:
             est = self._pos + max(0, int((now_monotonic - self._last_chunk_mono) * self.sfreq))
             return min(est, self.raw.shape[1])
 
-    def start(self, callback: ChunkCallback) -> None:
+    def start(self, callback: ChunkCallback, start_sample: int = 0) -> None:
         self.callback = callback
         self._stop.clear()
+        with self._lock:
+            self._pos = max(0, min(int(start_sample), self.raw.shape[1]))
         self._thread = threading.Thread(target=self._run, name="mock-eeg", daemon=True)
         self._thread.start()
 

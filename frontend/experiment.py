@@ -43,8 +43,9 @@ class ExperimentConfig:
     ref_label: str = "A1"
     gnd_label: str = "A2"
     acquisition_mode: str = "mock"
-    output_dir: str | Path = "data/raw"
+    output_dir: str | Path = "Data"
     seed: int = 0
+    subject_guess: int | None = None
 
 
 @dataclass
@@ -54,11 +55,11 @@ class SessionPaths:
     session: Path
 
 
-def make_session_paths(cfg: ExperimentConfig, output_dir: Path) -> SessionPaths:
+def make_session_paths(cfg: ExperimentConfig, run_dir: Path) -> SessionPaths:
     stem = f"sub-{cfg.participant_id}_ses-{cfg.session_id}_task-guessnumber_run-{cfg.run_id}_eeg"
-    return SessionPaths(edf=output_dir / (stem + ".edf"),
-                        events=output_dir / (stem + "_events.jsonl"),
-                        session=output_dir / (stem + "_session.json"))
+    return SessionPaths(edf=run_dir / (stem + ".edf"),
+                        events=run_dir / (stem + "_events.jsonl"),
+                        session=run_dir / (stem + "_session.json"))
 
 
 class ExperimentController:
@@ -71,8 +72,9 @@ class ExperimentController:
         self.acquirer = acquirer
         self.marker_outlet = marker_outlet
         self.eeg_outlet = eeg_outlet
-        self.paths = make_session_paths(cfg, Path(cfg.output_dir))
-        self.paths.edf.parent.mkdir(parents=True, exist_ok=True)
+        self.started_at_local = time.strftime("%Y%m%d_%H%M%S")
+        self.run_dir = self._make_run_dir()
+        self.paths = make_session_paths(cfg, self.run_dir)
         self.recorder = RawEDFRecorder(self.paths.edf, float(cfg.sfreq), cfg.channels,
                                        participant_id=cfg.participant_id,
                                        session_id=cfg.session_id)
@@ -83,6 +85,7 @@ class ExperimentController:
         self._stopped = False
         self._finalized = False
         self._stop_reason = ""
+        self._acquisition_started = False
         self._event_seq = 0
         self._sample_count_at_start = 0
         self._stim_count = 0
@@ -93,6 +96,20 @@ class ExperimentController:
         self._clock_lock = threading.Lock()
         self.session_metadata: dict[str, Any] = {}
         self._initialise_session_metadata()
+
+    def _make_run_dir(self) -> Path:
+        root = Path(self.cfg.output_dir)
+        root.mkdir(parents=True, exist_ok=True)
+        candidate = root / self.started_at_local
+        if not candidate.exists():
+            candidate.mkdir(parents=True, exist_ok=True)
+            return candidate
+        for i in range(1, 100):
+            candidate = root / f"{self.started_at_local}_{i:02d}"
+            if not candidate.exists():
+                candidate.mkdir(parents=True, exist_ok=True)
+                return candidate
+        raise RuntimeError("cannot allocate a run directory")
 
     def _initialise_session_metadata(self) -> None:
         self.session_metadata = {
@@ -118,6 +135,9 @@ class ExperimentController:
             },
             "created_utc": utc_now_iso(),
             "git_commit": git_commit_short(),
+            "run_dir": str(self.run_dir),
+            "started_at_local": self.started_at_local,
+            "subject_guess": self.cfg.subject_guess,
         }
         atomic_write_json(self.paths.session, self.session_metadata)
 
@@ -126,12 +146,31 @@ class ExperimentController:
             return
         self._sample_count_at_start = int(self.acquirer.sample_count)
         self._runner = TimelineRunner(self.paradigm, self._on_timeline_event)
-        self.acquirer.start(self._on_eeg_chunk)
+        # Acquisition intentionally starts together with the first digit onset.
         self._start_monotonic = time.monotonic()
         self._push_marker("session_start")
         self._push_marker(f"target/{self.cfg.target_number}")
         self._set_visual(None)
         self._update_status("RUNNING")
+
+    def _start_acquisition(self, event: TimelineEvent) -> None:
+        if self._acquisition_started:
+            return
+        self._sample_count_at_start = int(self.acquirer.sample_count)
+        # Mock stream must jump to the current timeline position because it has
+        # pre-generated the whole session. Real device starts at its live cursor.
+        start_sample = int(round(event.time_sec * self.cfg.sfreq))
+        try:
+            self.acquirer.start(self._on_eeg_chunk, start_sample=start_sample)
+        except TypeError:
+            self.acquirer.start(self._on_eeg_chunk)
+        if self.cfg.acquisition_mode == "mock":
+            # Mock raw data was pre-generated for the whole timeline; the local
+            # recording starts at `start_sample`, so that is the new zero point.
+            self._sample_count_at_start = start_sample
+        self._acquisition_started = True
+        logger.info("Acquisition started at first digit (timeline %.3fs, sample %d)",
+                    event.time_sec, start_sample)
 
     def _on_eeg_chunk(self, samples: np.ndarray, start_sample: int) -> None:
         try:
@@ -165,6 +204,84 @@ class ExperimentController:
         if max_samples is not None and data.shape[1] > max_samples:
             data = data[:, -max_samples:]
         return data
+
+    def record_subject_guess(self, value: int | None) -> None:
+        if value is not None and not 1 <= int(value) <= 9:
+            raise ValueError("subject_guess must be in 1..9")
+        self.cfg.subject_guess = value
+        self.session_metadata["subject_guess"] = value
+        atomic_write_json(self.paths.session, self.session_metadata)
+        self._write_experiment_summary()
+
+    def _write_split_files(self) -> list[dict[str, Any]]:
+        """Save one EDF file per block, ordered by time, next to the total EDF."""
+        data = self.recorder.get_data()
+        events = []
+        if self.paths.events.exists():
+            import json as _json
+            with open(self.paths.events, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        events.append(_json.loads(line))
+        starts = {}
+        ends = {}
+        for ev in events:
+            if ev.get("type", "").startswith("block_start"):
+                starts[int(ev.get("block", -1))] = int(ev.get("recording_sample", 0))
+            elif ev.get("type", "").startswith("block_end"):
+                ends[int(ev.get("block", -1))] = int(ev.get("recording_sample", 0))
+        manifest = []
+        n_total = int(data.shape[1])
+        for block in sorted(starts):
+            start = max(0, int(starts[block]))
+            if block in ends:
+                end = min(n_total, max(start + 1, int(ends[block])))
+            else:
+                end = n_total
+            if end <= start:
+                continue
+            block_data = data[:, start:end].astype(np.float64)
+            path = self.run_dir / f"eeg_block_{int(block):03d}.edf"
+            self._write_edf_segment(path, block_data)
+            manifest.append({
+                "block": int(block),
+                "start_sample": int(start),
+                "end_sample": int(end),
+                "n_samples": int(end - start),
+                "duration_sec": round((end - start) / self.cfg.sfreq, 3),
+                "path": str(path),
+            })
+        atomic_write_json(self.run_dir / "split_manifest.json",
+                          {"n_total_samples": n_total, "segments": manifest})
+        return manifest
+
+    def _write_edf_segment(self, path: Path, data: np.ndarray) -> None:
+        from pyedflib import highlevel
+        headers = [highlevel.make_signal_header(
+            label=label, dimension="uV", sample_frequency=float(self.cfg.sfreq),
+            physical_min=-2000.0, physical_max=2000.0) for label in self.cfg.channels]
+        highlevel.write_edf(str(path), data, headers,
+                            file_type=1)  # EDF+
+
+    def _write_experiment_summary(self) -> None:
+        summary = {
+            "started_at_local": self.started_at_local,
+            "run_dir": str(self.run_dir),
+            "participant_id": self.cfg.participant_id,
+            "session_id": self.cfg.session_id,
+            "run_id": self.cfg.run_id,
+            "target_number": int(self.cfg.target_number),
+            "subject_guess": self.cfg.subject_guess,
+            "n_stimuli": self._stim_count,
+            "n_samples_recorded": int(self.recorder.sample_count),
+            "sfreq": int(self.cfg.sfreq),
+            "unit": self.cfg.unit,
+            "total_edf": str(self.paths.edf),
+            "events_jsonl": str(self.paths.events),
+            "session_json": str(self.paths.session),
+        }
+        atomic_write_json(self.run_dir / "experiment_summary.json", summary)
 
     def _set_visual(self, visual: str | None) -> None:
         if visual == self._current_visual:
@@ -222,6 +339,8 @@ class ExperimentController:
             marker_text = f"fixation_off/{event.block}"
             visual = None
         elif event.kind == "stim_on":
+            if not self._acquisition_started:
+                self._start_acquisition(event)
             marker_text = f"stim_on/{event.number}"
             visual = str(event.number)
             duration = event.duration_sec
@@ -324,6 +443,13 @@ class ExperimentController:
         except Exception:
             logger.exception("recorder close failed")
             recorder_sidecar = {"error": "EDF close failed"}
+        split_manifest = []
+        if self.recorder._data is not None:
+            try:
+                split_manifest = self._write_split_files()
+            except Exception:
+                logger.exception("block split save failed")
+        self._write_experiment_summary()
         try:
             self.marker_outlet.close()
             self.eeg_outlet.close()
@@ -354,8 +480,11 @@ class ExperimentController:
                 "clock_anchors": [{"recording_sample": int(smp), "lsl_sec": float(ts)}
                                   for smp, ts in self._eeg_clock_refs[-5:]],
             },
+            "split_files": split_manifest,
+            "subject_guess": self.cfg.subject_guess,
             "last_error": str(getattr(self.acquirer, "last_error", None) or ""),
         })
+        self.session_metadata = final
         atomic_write_json(self.paths.session, final)
         self._update_status("FINISHED")
         return final

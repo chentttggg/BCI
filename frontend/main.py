@@ -59,7 +59,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--inter-block-ms", type=int, default=2000)
     p.add_argument("--start-delay-ms", type=int, default=1000)
     p.add_argument("--end-delay-ms", type=int, default=1000)
-    p.add_argument("--output-dir", default="data/raw")
+    p.add_argument("--output-dir", default="Data")
+    p.add_argument("--subject-guess", type=int, choices=range(1, 10), default=None,
+                   help="受试者在数字播放结束后自己报出的数字 (1-9)")
     p.add_argument("--channel-config", default="config/channel_config.json")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--headless", action="store_true",
@@ -97,6 +99,7 @@ def _run_headless(args: argparse.Namespace) -> int:
         channels=channels, ref_label=ref, gnd_label=gnd,
         acquisition_mode="mock" if args.mock else "device",
         output_dir=args.output_dir, seed=args.seed,
+        subject_guess=args.subject_guess,
     )
     paradigm_cfg = ParadigmConfig(
         blocks=args.blocks, repetitions=args.repetitions,
@@ -135,6 +138,9 @@ def _run_headless(args: argparse.Namespace) -> int:
         logging.info("Interrupted by user")
     finally:
         result = controller.stop("keyboard_interrupt" if controller._stop_reason == "" else controller._stop_reason)
+    if getattr(args, "subject_guess", None) is not None:
+        controller.record_subject_guess(args.subject_guess)
+        print({"subject_guess_saved": args.subject_guess})
     print(result)
     _post_session_predict(controller.paths, args)
     return 0 if result.get("n_stimuli", 0) > 0 else 2
@@ -144,7 +150,7 @@ def _run_gui(args: argparse.Namespace) -> int:
     try:
         from PySide6.QtCore import QPoint, Qt, QTimer
         from PySide6.QtGui import QColor, QFont, QPainter, QPen
-        from PySide6.QtWidgets import QApplication, QLabel, QVBoxLayout, QWidget
+        from PySide6.QtWidgets import QApplication, QInputDialog, QLabel, QVBoxLayout, QWidget
     except Exception as exc:
         print("PySide6 is required for GUI mode. Use --headless for data recording only.", file=sys.stderr)
         print(f"Import error: {exc}", file=sys.stderr)
@@ -157,6 +163,7 @@ def _run_gui(args: argparse.Namespace) -> int:
         channels=channels, ref_label=ref, gnd_label=gnd,
         acquisition_mode="mock" if args.mock else "device",
         output_dir=args.output_dir, seed=args.seed,
+        subject_guess=args.subject_guess,
     )
     paradigm_cfg = ParadigmConfig(
         blocks=args.blocks, repetitions=args.repetitions,
@@ -279,13 +286,26 @@ def _run_gui(args: argparse.Namespace) -> int:
             self.wave.update()
             if self.controller.finished:
                 result = self.controller.stop("gui_completed")
+                self._ask_subject_guess()
                 print(result)
                 _post_session_predict(self.controller.paths, args)
                 QApplication.quit()
 
+        def _ask_subject_guess(self) -> None:
+            if getattr(args, "subject_guess", None) is not None:
+                self.controller.record_subject_guess(args.subject_guess)
+                return
+            guess, ok = QInputDialog.getInt(
+                self, "记录受试者猜测", "受试者猜的数字是？(1-9)",
+                value=int(self.controller.cfg.target_number), min=1, max=9)
+            if ok:
+                self.controller.record_subject_guess(int(guess))
+                print({"subject_guess_saved": int(guess)})
+
         def keyPressEvent(self, event: Any) -> None:
             if event.key() == Qt.Key.Key_Escape:
                 result = self.controller.stop("user_escape")
+                self._ask_subject_guess()
                 print(result)
                 _post_session_predict(self.controller.paths, args)
                 QApplication.quit()

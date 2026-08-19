@@ -33,6 +33,7 @@ class RawEDFRecorder:
     _sample_count: int = 0
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
     _closed: bool = False
+    _data: np.ndarray | None = None
 
     def write(self, samples: np.ndarray) -> None:
         """samples: (n_channels, n_samples) float32 microvolts."""
@@ -58,6 +59,11 @@ class RawEDFRecorder:
         with self._lock:
             return self._sample_count
 
+    def get_data(self) -> np.ndarray:
+        if self._data is None:
+            raise RuntimeError("recorder has not been closed yet")
+        return self._data.copy()
+
     def close(self) -> dict[str, Any]:
         if self._closed:
             return {}
@@ -68,6 +74,7 @@ class RawEDFRecorder:
         if not self._chunks:
             raise RuntimeError(f"No EEG samples recorded: {self.path}")
         data = np.concatenate(self._chunks, axis=1)
+        self._data = data
         tmp_path = self.path.with_name(self.path.name + ".tmp")
         if tmp_path.exists():
             tmp_path.unlink()

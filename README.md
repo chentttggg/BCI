@@ -44,7 +44,14 @@ python -m frontend.main --mock --headless --target 7 \
 ```
 
 前端默认参数：500 Hz、Gain24、刺激 200 ms、空白 1300 ms（SOA=1500 ms）、
-每 block 9×5=45 试次。生成文件：
+每 block 9×5=45 试次。
+
+**自动采集与保存**：采集在第一个数字出现时自动启动；结束后按实验开始时间
+创建 `Data/YYYYmmdd_HHMMSS/` 文件夹，自动保存总 EDF、逐 block 分片 EDF、
+events.jsonl、session.json、experiment_summary.json、split_manifest.json。
+GUI 结束后会弹出对话框记录受试者猜的数字；headless 可用 `--subject-guess N`。
+
+生成文件：
 
 - `sub-..._eeg.edf`：未滤波原始 EEG（µV）
 - `sub-..._eeg_events.jsonl`：每个 marker 的 LSL/monotonic/采样点索引

@@ -144,3 +144,19 @@
 - 影响范围：frontend/lsl_bridge.py、experiment.py、recorder.py；
   backend/io.py、ingest.py；scripts/make_synthetic_dataset.py。
 - 回滚：见 Git 历史提交。
+
+## D-011 数字播放与采集同步、按时间分文件夹、受试者猜测记录
+
+- 日期：2026-08-19
+- 变更者：EEG 分析工程师（agent）
+- 变更理由：需要“开始播放数字=开始采集”，结束后自动保存总文件与时间序列分片，
+  并记录受试者口头报告的数字。
+- 变更内容：
+  1. 采集延迟到第一个 `stim_on` 事件才启动；
+  2. 输出根目录改为 `Data/`，每次运行按 `YYYYmmdd_HHMMSS` 建独立文件夹；
+  3. 结束自动保存总 EDF、events.jsonl、session.json、
+     experiment_summary.json、split_manifest.json；
+  4. 按 block 切分 EDF（`eeg_block_000.edf`...）；
+  5. GUI 结束弹窗记录受试者猜测；headless 支持 `--subject-guess`。
+- 影响范围：frontend/main.py、experiment.py、recorder.py、acquisition.py。
+- 回滚：见 Git 历史提交。
