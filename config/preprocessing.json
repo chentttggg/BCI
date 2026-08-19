@@ -1,0 +1,22 @@
+{
+  "raw_sfreq": 500.0,
+  "downsample_sfreq": 250.0,
+  "highpass_hz": 0.5,
+  "lowpass_hz": 40.0,
+  "notch_hz": 50.0,
+  "notch_harmonics": [
+    100.0
+  ],
+  "tmin_s": -0.2,
+  "tmax_s": 1.0,
+  "baseline_s": [
+    -0.2,
+    0.0
+  ],
+  "reref": "car",
+  "artifact_abs_uv": 120.0,
+  "artifact_ptp_uv": 150.0,
+  "max_bad_epoch_ratio": 0.3,
+  "max_bad_channels": 1,
+  "note": "所有参数修改必须写入 guidance/tech_stack/decisions_log.md"
+}

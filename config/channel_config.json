@@ -1,0 +1,40 @@
+{
+  "device": "BrainSync BS8A",
+  "eeg_channels": [
+    {
+      "index": 0,
+      "label": "Fz"
+    },
+    {
+      "index": 1,
+      "label": "Cz"
+    },
+    {
+      "index": 2,
+      "label": "P3"
+    },
+    {
+      "index": 3,
+      "label": "Pz"
+    },
+    {
+      "index": 4,
+      "label": "P4"
+    },
+    {
+      "index": 5,
+      "label": "PO7"
+    },
+    {
+      "index": 6,
+      "label": "PO8"
+    },
+    {
+      "index": 7,
+      "label": "Oz"
+    }
+  ],
+  "ref_label": "A1",
+  "gnd_label": "Fpz",
+  "note": "物理连线必须与本配置一致。Cz 已作为记录通道，因此不能使用说明书默认 REF=Cz。"
+}
