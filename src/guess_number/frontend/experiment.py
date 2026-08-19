@@ -269,6 +269,9 @@ class ExperimentController:
                             file_type=1)  # EDF+
 
     def _write_experiment_summary(self) -> None:
+        counts: dict[int, int] = {}
+        for event in self.paradigm.stim_on_events:
+            counts[event.number] = counts.get(event.number, 0) + 1
         summary = {
             "started_at_local": self.started_at_local,
             "run_dir": str(self.run_dir),
@@ -278,6 +281,7 @@ class ExperimentController:
             "target_number": int(self.cfg.target_number),
             "subject_guess": self.cfg.subject_guess,
             "n_stimuli": self._stim_count,
+            "stimulus_count_by_digit": counts,
             "n_samples_recorded": int(self.recorder.sample_count),
             "sfreq": int(self.cfg.sfreq),
             "unit": self.cfg.unit,

@@ -61,6 +61,19 @@ class Paradigm:
         self.rng = np.random.default_rng(cfg.seed)
         self.events: list[TimelineEvent] = []
         self._build()
+        self._validate_stimulus_counts()
+
+    def _validate_stimulus_counts(self) -> None:
+        counts: dict[int, int] = {}
+        for event in self.stim_on_events:
+            counts[event.number] = counts.get(event.number, 0) + 1
+        expected = self.cfg.blocks * self.cfg.repetitions
+        if sorted(counts) != list(range(1, 10)):
+            raise ValueError(f"paradigm digits not 1..9: {sorted(counts)}")
+        for digit in range(1, 10):
+            if counts[digit] != expected:
+                raise ValueError(
+                    f"paradigm count mismatch: digit {digit} appears {counts[digit]}, expected {expected}")
 
     def _build(self) -> None:
         cfg = self.cfg

@@ -262,7 +262,14 @@ class ResearcherWindow(QMainWindow):
         params.addRow("空白时长 (ms)", self.sp_blank_ms)
         params.addRow("黑屏基线 (ms)", self.sp_baseline_ms)
         params.addRow("数据目录", out_row)
+        self.lbl_duration = QLabel("")
+        self.lbl_duration.setStyleSheet("color:#00ffcc;font-weight:bold;")
+        params.addRow("预计实验时长", self.lbl_duration)
         root.addWidget(params_box)
+        for widget in [self.sp_blocks, self.sp_reps, self.sp_stim_ms,
+                       self.sp_blank_ms, self.sp_baseline_ms]:
+            widget.valueChanged.connect(self._update_estimated_duration)
+        self._update_estimated_duration()
 
         ctrl = QHBoxLayout()
         self.btn_start = QPushButton("开始实验")
@@ -345,6 +352,29 @@ class ResearcherWindow(QMainWindow):
         self._device_check = DeviceCheckWorker(mode, ble_name)
         self._device_check.result.connect(self.lbl_device.setText)
         self._device_check.start()
+
+    def _update_estimated_duration(self) -> None:
+        blocks = int(self.sp_blocks.value())
+        reps = int(self.sp_reps.value())
+        pcfg = ParadigmConfig(
+            blocks=blocks,
+            repetitions=reps,
+            fixation_s=0.0,
+            stimulus_s=self.sp_stim_ms.value() / 1000.0,
+            blank_s=self.sp_blank_ms.value() / 1000.0,
+            baseline_black_s=self.sp_baseline_ms.value() / 1000.0,
+            inter_block_s=2.0,
+            start_delay_s=0.0,
+            end_delay_s=1.0,
+            seed=0,
+        )
+        paradigm = Paradigm(pcfg)
+        total = blocks * 9 * reps
+        minutes = int(paradigm.duration_sec // 60)
+        seconds = int(round(paradigm.duration_sec % 60))
+        self.lbl_duration.setText(
+            f"{minutes:02d}:{seconds:02d} | 总数字 {total} 个 | "
+            f"每个数字出现 {blocks * reps} 次")
 
     def _experiment_config(self) -> tuple[ExperimentConfig, ParadigmConfig]:
         montage = read_montage()
