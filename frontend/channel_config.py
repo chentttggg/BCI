@@ -68,9 +68,11 @@ def gui_schema(path: str | Path = "config/channel_config.json") -> dict[str, Any
         },
         "trigger_hub": {
             "inputs": [
-                {"channel": 0, "name": "PD", "enabled": True, "threshold": 500},
-                {"channel": 1, "name": "AUDIO", "enabled": False, "threshold": 500},
-                {"channel": 2, "name": "KEY", "enabled": True, "threshold": 500},
-            ]
+                {"code": "PD", "label": "PD_Onset", "enabled": True, "threshold_mv": 1650.0},
+                {"code": "AUD", "label": "AUD_Onset", "enabled": True, "threshold_mv": 1500.0},
+                {"code": "MIC", "label": "MIC_Onset", "enabled": False, "threshold_mv": 1200.0},
+                {"code": "BTN", "label": "BTN_Press", "enabled": True, "threshold_mv": None},
+            ],
+            "output": {"connector": "BrainSync Trigger Hub 3.5 mm"},
         },
     }
