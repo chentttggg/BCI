@@ -205,10 +205,10 @@ class ResearcherWindow(QMainWindow):
         self._log("GUI ready. 请先检查设备，再填写实验参数。")
 
     def _build_ui(self) -> None:
-        tabs = QTabWidget()
-        tabs.addTab(self._build_experiment_tab(), "实验")
-        tabs.addTab(self._build_backend_tab(), "数据后端")
-        self.setCentralWidget(tabs)
+        self.tabs = QTabWidget()
+        self.tabs.addTab(self._build_experiment_tab(), "实验")
+        self.tabs.addTab(self._build_backend_tab(), "数据后端")
+        self.setCentralWidget(self.tabs)
 
     def _group(self, title: str) -> tuple[QGroupBox, QFormLayout]:
         box = QGroupBox(title)
@@ -217,9 +217,12 @@ class ResearcherWindow(QMainWindow):
 
     def _build_experiment_tab(self) -> QWidget:
         widget = QWidget()
+        self._experiment_tab = widget
         root = QVBoxLayout(widget)
+        self._experiment_layout = root
 
         device_box, device_form = self._group("设备")
+        self.device_box = device_box
         self.cb_mode = QComboBox()
         self.cb_mode.addItems(["真实设备(USB)", "蓝牙设备", "Mock 模拟"])
         self.ed_ble_name = QLineEdit("BrainSync")
@@ -235,6 +238,7 @@ class ResearcherWindow(QMainWindow):
         root.addWidget(device_box)
 
         params_box, params = self._group("实验参数")
+        self.params_box = params_box
         self.ed_subject = QLineEdit("P01")
         self.ed_session = QLineEdit("001")
         self.ed_run = QLineEdit("001")
@@ -249,7 +253,9 @@ class ResearcherWindow(QMainWindow):
         self.ed_output = QLineEdit(str(self.project_root / "data" / "recordings"))
         btn_out = QPushButton("选择...")
         btn_out.clicked.connect(self.choose_output_dir)
-        out_row = QHBoxLayout(); out_row.addWidget(self.ed_output); out_row.addWidget(btn_out)
+        out_container = QWidget()
+        out_row = QHBoxLayout(out_container); out_row.setContentsMargins(0, 0, 0, 0)
+        out_row.addWidget(self.ed_output); out_row.addWidget(btn_out)
         params.addRow("受试者 ID", self.ed_subject)
         params.addRow("Session", self.ed_session)
         params.addRow("Run", self.ed_run)
@@ -261,14 +267,14 @@ class ResearcherWindow(QMainWindow):
         params.addRow("刺激时长 (ms)", self.sp_stim_ms)
         params.addRow("空白时长 (ms)", self.sp_blank_ms)
         params.addRow("黑屏基线 (ms)", self.sp_baseline_ms)
-        params.addRow("数据目录", out_row)
+        params.addRow("数据目录", out_container)
         self.lbl_duration = QLabel("")
         self.lbl_duration.setStyleSheet("color:#00ffcc;font-weight:bold;")
         params.addRow("预计实验时长", self.lbl_duration)
+        for name in ["sp_blocks", "sp_reps", "sp_stim_ms", "sp_blank_ms", "sp_baseline_ms"]:
+            widget = getattr(self, name)
+            widget.valueChanged.connect(lambda _value, w=widget: self._update_estimated_duration())
         root.addWidget(params_box)
-        for widget in [self.sp_blocks, self.sp_reps, self.sp_stim_ms,
-                       self.sp_blank_ms, self.sp_baseline_ms]:
-            widget.valueChanged.connect(self._update_estimated_duration)
         self._update_estimated_duration()
 
         ctrl = QHBoxLayout()
@@ -291,7 +297,9 @@ class ResearcherWindow(QMainWindow):
 
     def _build_backend_tab(self) -> QWidget:
         widget = QWidget()
+        self._backend_tab = widget
         root = QVBoxLayout(widget)
+        self._backend_layout = root
         box, form = self._group("后端处理")
         self.ed_data_dir = QLineEdit(str(self.project_root / "data" / "raw"))
         btn_data = QPushButton("选择...")
