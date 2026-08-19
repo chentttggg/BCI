@@ -49,7 +49,7 @@ class TrialDataset:
     def __init__(self, X: np.ndarray, y: np.ndarray, train: bool = True,
                  time_shift_samples: int = 0, amplitude_scale_range: tuple[float, float] = (1.0, 1.0),
                  channel_dropout_prob: float = 0.0, noise_std: float = 0.0,
-                 seed: int | None = None) -> None:
+                 mixup_alpha: float = 0.0, seed: int | None = None) -> None:
         self.X = np.asarray(X, dtype=np.float32)
         self.y = np.asarray(y, dtype=np.float32)
         self.train = bool(train)
@@ -57,6 +57,7 @@ class TrialDataset:
         self.amp_range = tuple(amplitude_scale_range)
         self.channel_dropout_prob = float(channel_dropout_prob)
         self.noise_std = float(noise_std)
+        self.mixup_alpha = float(mixup_alpha)
         self.rng = np.random.default_rng(seed)
 
     def __len__(self) -> int:
@@ -68,7 +69,13 @@ class TrialDataset:
         x = self.X[idx].copy()
         y = float(self.y[idx])
         if self.train:
-            x = self._augment(x)
+            if self.mixup_alpha > 0 and self.rng.random() < 0.5:
+                j = int(self.rng.integers(0, len(self.X)))
+                lam = float(self.rng.beta(self.mixup_alpha, self.mixup_alpha))
+                x = lam * self._augment(x) + (1.0 - lam) * self._augment(self.X[j].copy())
+                y = lam * y + (1.0 - lam) * float(self.y[j])
+            else:
+                x = self._augment(x)
         x = x[np.newaxis, :, :]
         return torch.from_numpy(x), torch.tensor([y], dtype=torch.float32)
 

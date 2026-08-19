@@ -19,6 +19,7 @@ from .model import ModelBundle, build_shallow_convnet
 from .preprocess import prepare_session
 from .scoring import aggregate_number_scores, binary_metrics, block_predictions
 from .utils import atomic_write_json, configure_logging, sha256_file, utc_now_iso
+from .xdawn import XdawnProjector
 
 logger = logging.getLogger("backend.train")
 
@@ -164,6 +165,7 @@ def _make_loader(X: np.ndarray, y: np.ndarray, batch_size: int, train: bool,
         amplitude_scale_range=tuple(aug.amplitude_scale_range) if aug.enable else (1.0, 1.0),
         channel_dropout_prob=aug.channel_dropout_prob if aug.enable else 0.0,
         noise_std=aug.noise_std if aug.enable else 0.0,
+        mixup_alpha=aug.mixup_alpha if aug.enable else 0.0,
         seed=seed,
     )
     if train:
@@ -221,7 +223,8 @@ def _train_epoch(model: Any, loader: Any, optimizer: Any, loss_fn: Any) -> float
 
 def fit_model(X_train: np.ndarray, y_train: np.ndarray, X_val: np.ndarray, y_val: np.ndarray,
               pre_cfg: PreprocessConfig, train_cfg: TrainConfig, seed: int,
-              scaler: tuple[np.ndarray, np.ndarray] | None = None) -> dict[str, Any]:
+              scaler: tuple[np.ndarray, np.ndarray] | None = None,
+              projector: XdawnProjector | None = None) -> dict[str, Any]:
     import torch
 
     _set_seed(seed)
@@ -229,10 +232,16 @@ def fit_model(X_train: np.ndarray, y_train: np.ndarray, X_val: np.ndarray, y_val
     Xt = ((X_train - mean[None, :, None]) / std[None, :, None]).astype(np.float32)
     Xv = ((X_val - mean[None, :, None]) / std[None, :, None]).astype(np.float32)
 
+    # xDAWN is fitted on training trials only, then applied to validation.
+    if projector is None:
+        projector = XdawnProjector(reg=pre_cfg.xdawn_reg).fit_from_config(Xt, y_train, pre_cfg)
+    Xt = projector.transform(Xt).astype(np.float32)
+    Xv = projector.transform(Xv).astype(np.float32)
+
     loader = _make_loader(Xt, y_train, train_cfg.batch_size, True, train_cfg, seed)
     val_loader = _make_loader(Xv, y_val, max(32, train_cfg.batch_size), False, train_cfg, seed)
 
-    model = build_shallow_convnet(X_train.shape[1], X_train.shape[2], 2, train_cfg,
+    model = build_shallow_convnet(Xt.shape[1], Xt.shape[2], 2, train_cfg,
                                   model_sfreq=pre_cfg.downsample_sfreq)
     optimizer = torch.optim.AdamW(model.parameters(), lr=train_cfg.lr,
                                   weight_decay=train_cfg.weight_decay)
@@ -282,15 +291,19 @@ def fit_model(X_train: np.ndarray, y_train: np.ndarray, X_val: np.ndarray, y_val
 
     return {"model": model, "best_epoch": best_epoch,
             "best_val_balanced_accuracy": float(best_metric),
-            "train_losses": train_losses, "val_metrics": val_metrics}
+            "train_losses": train_losses, "val_metrics": val_metrics,
+            "projector": projector}
 
 
 def _eval_model(model: Any, X: np.ndarray, y: np.ndarray, scaler: tuple[np.ndarray, np.ndarray],
+                projector: XdawnProjector | None = None,
                 batch_size: int = 256) -> tuple[np.ndarray, np.ndarray]:
     import torch
 
     mean, std = scaler
     Xn = ((X - mean[None, :, None]) / std[None, :, None]).astype(np.float32)
+    if projector is not None:
+        Xn = projector.transform(Xn).astype(np.float32)
     tensor = torch.from_numpy(Xn[:, None, :, :])
     model.eval()
     outs = []
@@ -319,7 +332,8 @@ def run_cross_validation(prepared: PreparedData, pre_cfg: PreprocessConfig,
         fold_probs = []
         for seed in train_cfg.cv_seeds:
             result = fit_model(Xtr, ytr, Xval, yval, pre_cfg, train_cfg, seed, scaler)
-            probs, _ = _eval_model(result["model"], Xval, yval, scaler)
+            probs, _ = _eval_model(result["model"], Xval, yval, scaler,
+                                   projector=result["projector"])
             fold_probs.append(probs)
             fold_seed_reports.append({
                 "seed": seed,
@@ -359,11 +373,14 @@ def train_production_ensemble(prepared: PreparedData, pre_cfg: PreprocessConfig,
     mean = X.mean(axis=(0, 2))
     std = X.std(axis=(0, 2)) + 1e-6
     channels = [c.upper() for c in (channels or [])]
+    Xs = ((X - mean[None, :, None]) / std[None, :, None]).astype(np.float32)
+    full_projector = XdawnProjector(reg=pre_cfg.xdawn_reg).fit_from_config(Xs, y, pre_cfg)
 
     models = []
     reports = []
     for seed in train_cfg.production_seeds:
-        # 1) internal block-wise validation selects the epoch count
+        # 1) internal block-wise validation selects the epoch count.
+        #    xDAWN is refit inside `fit_model` on the internal training split only.
         tr_idx, va_idx = train_val_block_split(meta, val_ratio=0.15, seed=seed)
         if len(va_idx) < 2:
             va_idx = np.random.default_rng(seed).choice(
@@ -372,8 +389,9 @@ def train_production_ensemble(prepared: PreparedData, pre_cfg: PreprocessConfig,
         held = fit_model(X[tr_idx], y[tr_idx], X[va_idx], y[va_idx],
                          pre_cfg, train_cfg, seed, (mean, std))
         best_epoch = max(1, held["best_epoch"])
-        # 2) retrain on all data for the selected epoch count
-        exact = _fit_exact_epochs(X, y, X, y, pre_cfg, train_cfg, seed, (mean, std), best_epoch)
+        # 2) retrain on all data for the selected epoch count using the full-data xDAWN.
+        exact = _fit_exact_epochs(X, y, X, y, pre_cfg, train_cfg, seed, (mean, std),
+                                  best_epoch, projector=full_projector)
         models.append(exact["model"])
         reports.append({
             "seed": seed,
@@ -386,6 +404,7 @@ def train_production_ensemble(prepared: PreparedData, pre_cfg: PreprocessConfig,
     bundle = ModelBundle(models=models, preprocess_cfg=pre_cfg, train_cfg=train_cfg,
                          scaler_mean=mean.astype(np.float32), scaler_std=std.astype(np.float32),
                          channels=channels,
+                         xdawn_projector=full_projector,
                          extra={"production_reports": reports,
                                 "input_hashes": prepared.input_hashes,
                                 "created_utc": utc_now_iso()})
@@ -399,16 +418,21 @@ def train_production_ensemble(prepared: PreparedData, pre_cfg: PreprocessConfig,
 
 
 def _fit_exact_epochs(X_train, y_train, X_val, y_val, pre_cfg, train_cfg, seed,
-                      scaler, epochs: int) -> dict[str, Any]:
+                      scaler, epochs: int,
+                      projector: XdawnProjector | None = None) -> dict[str, Any]:
     import torch
 
     _set_seed(seed)
     mean, std = scaler
     Xt = ((X_train - mean[None, :, None]) / std[None, :, None]).astype(np.float32)
     Xv = ((X_val - mean[None, :, None]) / std[None, :, None]).astype(np.float32)
+    if projector is None:
+        projector = XdawnProjector(reg=pre_cfg.xdawn_reg).fit_from_config(Xt, y_train, pre_cfg)
+    Xt = projector.transform(Xt).astype(np.float32)
+    Xv = projector.transform(Xv).astype(np.float32)
     loader = _make_loader(Xt, y_train, train_cfg.batch_size, True, train_cfg, seed)
     val_loader = _make_loader(Xv, y_val, max(32, train_cfg.batch_size), False, train_cfg, seed)
-    model = build_shallow_convnet(X_train.shape[1], X_train.shape[2], 2, train_cfg,
+    model = build_shallow_convnet(Xt.shape[1], Xt.shape[2], 2, train_cfg,
                                   model_sfreq=pre_cfg.downsample_sfreq)
     optimizer = torch.optim.AdamW(model.parameters(), lr=train_cfg.lr, weight_decay=train_cfg.weight_decay)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max(1, epochs))

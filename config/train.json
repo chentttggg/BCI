@@ -1,10 +1,10 @@
 {
-  "epochs": 120,
-  "batch_size": 64,
+  "epochs": 150,
+  "batch_size": 32,
   "lr": 0.001,
   "weight_decay": 0.01,
-  "temporal_filters": 40,
-  "kernel_time_s": 0.1,
+  "temporal_filters": 60,
+  "kernel_time_s": 0.2,
   "pool_time_s": 0.3,
   "pool_stride_s": 0.06,
   "dropout": 0.5,
@@ -29,13 +29,14 @@
   ],
   "augmentation": {
     "enable": true,
-    "time_shift_samples": 12,
+    "time_shift_samples": 20,
     "amplitude_scale_range": [
       0.8,
       1.2
     ],
-    "channel_dropout_prob": 0.1,
-    "noise_std": 0.15
+    "channel_dropout_prob": 0.15,
+    "noise_std": 0.2,
+    "mixup_alpha": 0.2
   },
   "pos_weight_mode": "balanced",
   "note": "ShallowConvNet 核心；算力优先级低，使用多 seed 集成提高准确率。"

@@ -58,6 +58,8 @@ def process_session(edf: str | Path, bundle: ModelBundle, channel_cfg: ChannelCo
             "predicted": row["predicted"],
             "top3": row["top3"],
             "scores": row["scores"],
+            "confidence": row["confidence"],
+            "margin_logit": row["margin_logit"],
             "correct": row["correct"],
         })
 

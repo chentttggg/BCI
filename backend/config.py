@@ -33,7 +33,7 @@ class PreprocessConfig:
     raw_sfreq: float = 500.0
     downsample_sfreq: float = 250.0
     highpass_hz: float = 0.5
-    lowpass_hz: float = 40.0
+    lowpass_hz: float = 20.0
     notch_hz: float = 50.0
     notch_harmonics: list[float] = field(default_factory=lambda: [100.0])
     tmin_s: float = -0.2
@@ -44,6 +44,11 @@ class PreprocessConfig:
     artifact_ptp_uv: float = 150.0
     max_bad_epoch_ratio: float = 0.30
     max_bad_channels: int = 1
+    leadoff_normal_value: int = 255
+    xdawn_enable: bool = True
+    xdawn_target_components: int = 2
+    xdawn_nontarget_components: int = 1
+    xdawn_reg: float = 1e-6
 
     @classmethod
     def from_dict(cls, obj: dict[str, Any]) -> "PreprocessConfig":
@@ -69,10 +74,11 @@ class PreprocessConfig:
 @dataclass
 class AugmentationConfig:
     enable: bool = True
-    time_shift_samples: int = 12
+    time_shift_samples: int = 20
     amplitude_scale_range: list[float] = field(default_factory=lambda: [0.8, 1.2])
-    channel_dropout_prob: float = 0.10
-    noise_std: float = 0.15
+    channel_dropout_prob: float = 0.15
+    noise_std: float = 0.20
+    mixup_alpha: float = 0.20
 
     @classmethod
     def from_dict(cls, obj: dict[str, Any] | None) -> "AugmentationConfig":
@@ -83,12 +89,12 @@ class AugmentationConfig:
 
 @dataclass
 class TrainConfig:
-    epochs: int = 120
-    batch_size: int = 64
+    epochs: int = 150
+    batch_size: int = 32
     lr: float = 1e-3
     weight_decay: float = 0.01
-    temporal_filters: int = 40
-    kernel_time_s: float = 0.10
+    temporal_filters: int = 60
+    kernel_time_s: float = 0.20
     pool_time_s: float = 0.30
     pool_stride_s: float = 0.06
     dropout: float = 0.5

@@ -2,7 +2,7 @@
   "raw_sfreq": 500.0,
   "downsample_sfreq": 250.0,
   "highpass_hz": 0.5,
-  "lowpass_hz": 40.0,
+  "lowpass_hz": 20.0,
   "notch_hz": 50.0,
   "notch_harmonics": [
     100.0
@@ -18,5 +18,10 @@
   "artifact_ptp_uv": 150.0,
   "max_bad_epoch_ratio": 0.3,
   "max_bad_channels": 1,
-  "note": "所有参数修改必须写入 guidance/tech_stack/decisions_log.md"
+  "note": "所有参数修改必须写入 guidance/tech_stack/decisions_log.md",
+  "leadoff_normal_value": 255,
+  "xdawn_enable": true,
+  "xdawn_target_components": 2,
+  "xdawn_nontarget_components": 1,
+  "xdawn_reg": 1e-06
 }

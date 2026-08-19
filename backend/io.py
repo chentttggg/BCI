@@ -187,7 +187,18 @@ def _events_from_df(df: pd.DataFrame, sfreq: float) -> pd.DataFrame:
         else:
             out[col] = np.nan
 
+    # Preserve BrainSync packet-level quality fields when the frontend logged them.
+    quality_cols = ["leadoff_status", "trig_in_status", "is_impedance_mode",
+                    "packet_seq", "packet_delta_time_us"]
+    for col in quality_cols:
+        if col in out.columns:
+            if col == "is_impedance_mode":
+                out[col] = out[col].astype(str).str.lower().isin(["true", "1", "yes"])
+            else:
+                out[col] = pd.to_numeric(out[col], errors="coerce")
+
     cols = ["onset_sample", "onset_sec", "number", "block", "trial", "type"]
+    cols += [c for c in quality_cols if c in out.columns]
     out = out[cols].sort_values("onset_sample").reset_index(drop=True)
     return out
 

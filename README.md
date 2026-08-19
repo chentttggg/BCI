@@ -77,9 +77,19 @@ python -m backend.main predict \
 ```
 
 训练核心为 Schirrmeister et al. (2017) 的 **ShallowConvNet**：
-temporal conv → spatial conv → BatchNorm → square → avg pool → log →
-dropout → 分类。先做 target/non-target 二分类，再按刺激数字聚合
-`mean(logit)` 得到 1–9 的 9 选 1 猜测。默认使用多 seed 集成。
+temporal conv(60, 1×50@250Hz) → spatial conv → BatchNorm → square →
+avg pool → log → dropout → 分类。先做 target/non-target 二分类，再按刺激数字
+以 `mean(logit)`（等先验 Bayesian MAP）聚合得到 1–9 的 9 选 1 猜测，并输出
+block 置信度与 logit margin。默认使用多 seed 集成。
+
+**面向 BrainSync 数据特征/接口的增强**：
+- SDK batch_size 固定为 250 的整数倍；事件采样点做包间插值；
+- 记录并利用 `leadoff_status`、`trig_in_status`、`is_impedance_mode()`，
+  导联脱落/阻抗模式试次在后端被标记为坏试次；
+- 0.5–20 Hz 滤波（P300 频带，抑制干电极肌电）；
+- **xDAWN 空间滤波增强通道**（原始 8 通道 + target 2 成分 + non-target 1 成分）；
+- mixup(α=0.2)、时间抖动、幅度缩放、通道 dropout、噪声注入；
+- 单被试小样本：focal loss、类别平衡采样、LOSO/block 交叉验证、多 seed 集成。
 
 ## 5. 主要改进（相对于原文献）
 
@@ -96,7 +106,7 @@ dropout → 分类。先做 target/non-target 二分类，再按刺激数字聚�
 - `config/channel_config.json` 必须与物理连线一致。Cz 是记录通道，
   不能按 BrainSync 说明书默认 Cz 作 REF；默认 REF=A1、GND=Fpz。
 - 真实采集前先查阻抗：建议每个通道 < 5 kΩ，门槛 < 10 kΩ。
-- 后端滤波顺序为：0.5 Hz 高通 → 50/100 Hz 陷波 → 40 Hz 低通 →
-  250 Hz 降采样 → epoch(-0.2~1.0 s) → 基线(-0.2~0 s) → CAR。
-  所有参数在 `config/preprocessing.json`。
+- 后端滤波顺序为：0.5 Hz 高通 → 50/100 Hz 陷波 → 20 Hz 低通 →
+  250 Hz 降采样 → epoch(-0.2~1.0 s) → 基线(-0.2~0 s) → CAR →
+  可选 xDAWN 增强通道。所有参数在 `config/preprocessing.json`。
 - 重大参数修改必须记录到 `guidance/tech_stack/decisions_log.md`。

@@ -232,6 +232,7 @@ class ExperimentController:
             "eeg_sample": sample,
             "recording_sample": max(0, sample - self._sample_count_at_start),
             "recording_onset_sec": max(0.0, (sample - self._sample_count_at_start) / self.cfg.sfreq),
+            **getattr(self.acquirer, "last_status", {}),
         })
 
     def _request_stop(self, reason: str) -> None:
@@ -307,6 +308,9 @@ class ExperimentController:
             "edf_sha256": recorder_sidecar.get("sha256"),
             "events_jsonl_sha256": sha256_file(self.paths.events) if self.paths.events.exists() else None,
             "loss_stats": loss_stats,
+            "device_batch_size": getattr(self.acquirer, "batch_size", None),
+            "device_quality": getattr(self.acquirer, "quality_stats", {}),
+            "last_packet_status": getattr(self.acquirer, "last_status", {}),
             "last_error": str(getattr(self.acquirer, "last_error", None) or ""),
         })
         atomic_write_json(self.paths.session, final)

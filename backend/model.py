@@ -8,6 +8,7 @@ from typing import Any
 import numpy as np
 
 from .config import PreprocessConfig, TrainConfig
+from .xdawn import XdawnProjector
 
 
 def _safe_conv_out(length: int, kernel: int, stride: int = 1) -> int:
@@ -23,7 +24,7 @@ def build_shallow_convnet(n_channels: int, n_times: int, n_classes: int = 2,
                           model_sfreq: float = 250.0) -> Any:
     """Build a faithful ShallowConvNet adapted to the current time length.
 
-    Paper: temporal conv (40 filters, 1x25) -> spatial conv (40 filters, Cx1)
+    Paper (canonical 250 Hz): temporal conv (40, 1x25) -> spatial conv (40, Cx1)
            -> batch norm -> square -> avg pool (1x75, stride 1x15) -> log
            -> dropout -> conv classifier.
     """
@@ -95,6 +96,7 @@ class ModelBundle:
     scaler_std: np.ndarray
     channels: list[str]
     extra: dict[str, Any]
+    xdawn_projector: XdawnProjector | None = None
 
     def predict_proba(self, X: np.ndarray) -> np.ndarray:
         """Return P(target) for each epoch, averaged over the ensemble."""
@@ -102,6 +104,8 @@ class ModelBundle:
 
         X = X.astype(np.float32)
         Xn = (X - self.scaler_mean[None, :, None]) / self.scaler_std[None, :, None]
+        if self.xdawn_projector is not None:
+            Xn = self.xdawn_projector.transform(Xn).astype(np.float32)
         tensor = torch.from_numpy(Xn[:, None, :, :])
         probs = []
         for model in self.models:
@@ -129,6 +133,7 @@ class ModelBundle:
             "scaler_mean": self.scaler_mean.tolist(),
             "scaler_std": self.scaler_std.tolist(),
             "extra": self.extra,
+            "xdawn": None if self.xdawn_projector is None else self.xdawn_projector.to_dict(),
             "model_files": states,
         })
 
@@ -143,6 +148,11 @@ class ModelBundle:
         train_cfg = TrainConfig.from_dict(obj["train"])
         n_channels = len(obj["channels"])
         n_times = pre_cfg.n_times
+        xdawn = None
+        if obj.get("xdawn"):
+            xdawn = XdawnProjector.from_dict(obj["xdawn"])
+            if xdawn.target_filters is not None or xdawn.nontarget_filters is not None:
+                n_channels = xdawn.n_output_channels
         model_files = [Path(s) for s in obj["model_files"]]
         models = []
         for path in model_files:
@@ -160,5 +170,6 @@ class ModelBundle:
                    scaler_mean=np.asarray(obj["scaler_mean"], dtype=np.float32),
                    scaler_std=np.asarray(obj["scaler_std"], dtype=np.float32),
                    channels=list(obj["channels"]),
-                   extra=dict(obj.get("extra", {})))
+                   extra=dict(obj.get("extra", {})),
+                   xdawn_projector=xdawn)
 

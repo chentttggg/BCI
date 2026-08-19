@@ -32,6 +32,15 @@ class MockAcquirer:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self.callback: ChunkCallback | None = None
+        self.last_status: dict = {
+            "leadoff_status": 255,
+            "trig_in_status": 0,
+            "stim_label_idx": 255,
+            "is_impedance_mode": False,
+            "packet_seq": None,
+            "packet_delta_time_us": None,
+        }
+        self.quality_stats: dict = {"n_normal_packets": 0, "n_impedance_packets": 0}
 
     @property
     def sample_count(self) -> int:
@@ -84,11 +93,15 @@ class MockAcquirer:
 class BrainSyncAcquirer:
     """Real BrainSync BS8A acquirer. Runs the async SDK API in a worker thread."""
 
-    def __init__(self, sfreq: int = 500, gain: str = "Gain24", batch_size: int = 10,
+    def __init__(self, sfreq: int = 500, gain: str = "Gain24", batch_size: int = 250,
                  channels: list[str] | None = None) -> None:
         self.sfreq = int(sfreq)
         self.gain = gain
+        # BrainSync SDK requires subscribe_eeg_data batch_size to be a multiple
+        # of 250. Round up silently and record the effective value.
         self.batch_size = int(batch_size)
+        if self.batch_size % 250 != 0:
+            self.batch_size = ((self.batch_size // 250) + 1) * 250
         self.channels = channels or []
         self._pos = 0
         self._last_chunk_mono: float | None = None
@@ -99,6 +112,16 @@ class BrainSyncAcquirer:
         self.device_handle = None
         self.loss_stats: dict = {}
         self.last_error: Exception | None = None
+        self.last_status: dict = {
+            "leadoff_status": 255,
+            "trig_in_status": 0,
+            "stim_label_idx": 255,
+            "is_impedance_mode": False,
+            "packet_seq": None,
+            "packet_delta_time_us": None,
+        }
+        self.quality_stats: dict = {"n_normal_packets": 0, "n_impedance_packets": 0,
+                                    "n_leadoff_batches": 0}
 
     @property
     def sample_count(self) -> int:
@@ -158,18 +181,77 @@ class BrainSyncAcquirer:
         await brainsync_sdk.set_eeg_gain(self.device_handle, gain_enum)
         await brainsync_sdk.set_eeg_signal_type(self.device_handle, brainsync_sdk.EegSignalType.Normal)
         await brainsync_sdk.clear_receive_buffer(self.device_handle)
+        # Dry electrodes benefit from lead-off monitoring. The SDK may reject these
+        # calls on older firmware, so configuration is best-effort and recorded.
+        try:
+            await brainsync_sdk.set_eeg_leadoff_type(self.device_handle,
+                                                     brainsync_sdk.LeadoffType.Hz31_2)
+        except Exception as exc:
+            logger.info("leadoff type config skipped: %s", exc)
+        try:
+            await brainsync_sdk.set_eeg_leadoff_current(self.device_handle,
+                                                        brainsync_sdk.LeadoffCurrent.Na6)
+        except Exception as exc:
+            logger.info("leadoff current config skipped: %s", exc)
+        try:
+            await brainsync_sdk.set_eeg_leadoff_channels(self.device_handle, [True] * 8)
+        except Exception as exc:
+            logger.info("leadoff channel mask config skipped: %s", exc)
+
+        def _packet_status(packet) -> dict:
+            try:
+                st = packet.status
+                return {
+                    "leadoff_status": int(getattr(st, "leadoff_status", 255)),
+                    "trig_in_status": int(getattr(st, "trig_in_status", 0)),
+                    "stim_label_idx": int(getattr(st, "stim_label_idx", 255)),
+                }
+            except Exception:
+                return {"leadoff_status": 255, "trig_in_status": 0, "stim_label_idx": 255}
 
         def on_packets(packets) -> None:
             try:
-                n = len(packets)
+                normal = []
+                for p in packets:
+                    try:
+                        is_imp = bool(p.is_impedance_mode())
+                    except Exception:
+                        is_imp = False
+                    if is_imp:
+                        self.quality_stats["n_impedance_packets"] += 1
+                        continue
+                    normal.append(p)
+                if not normal:
+                    return
                 data = np.stack([np.asarray(p.to_microvolts(gain_enum), dtype=np.float32)
-                                 for p in packets], axis=1)
+                                 for p in normal], axis=1)
                 if data.shape[0] != len(self.channels) and self.channels:
                     data = data[:len(self.channels), :]
+                status = _packet_status(normal[-1])
                 with self._lock:
                     start = self._pos
-                    self._pos += n
+                    self._pos += len(normal)
                     self._last_chunk_mono = time.monotonic()
+                    self.last_status = {
+                        **status,
+                        "is_impedance_mode": False,
+                        "packet_seq": int(normal[-1].seq_num),
+                        "packet_delta_time_us": int(normal[-1].delta_time_us()),
+                    }
+                    self.quality_stats["n_normal_packets"] += len(normal)
+                    if status.get("leadoff_status", 255) != 255:
+                        self.quality_stats["n_leadoff_batches"] += 1
+                    try:
+                        dts = [int(p.delta_time_us()) for p in normal if int(p.delta_time_us()) > 0]
+                        if dts:
+                            med_dt = float(np.median(dts))
+                            expected_dt = 1_000_000.0 / self.sfreq
+                            self.quality_stats["median_delta_time_us"] = med_dt
+                            self.quality_stats["expected_delta_time_us"] = expected_dt
+                            if abs(med_dt - expected_dt) / expected_dt > 0.10:
+                                self.quality_stats["n_delta_time_outlier_batches"] =                                     self.quality_stats.get("n_delta_time_outlier_batches", 0) + 1
+                    except Exception:
+                        pass
                 if self.callback is not None:
                     self.callback(data, start)
             except Exception:

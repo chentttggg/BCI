@@ -91,3 +91,50 @@ def test_edf_roundtrip(tmp_path: Path) -> None:
     session = load_session(tmp_path / "test.edf")
     assert session.raw.shape[1] >= 1000
     assert session.ch_names[0] == "Fz"
+
+
+def test_xdawn_projector_shapes() -> None:
+    from backend.xdawn import XdawnProjector
+
+    rng = np.random.default_rng(3)
+    X = rng.normal(0, 1, size=(30, 8, 300)).astype(np.float32)
+    X[:, 3, 50:90] += 5.0
+    y = np.array([1] * 3 + [0] * 27)
+    p = XdawnProjector(reg=1e-6).fit(X, y, 2, 1)
+    out = p.transform(X)
+    assert p.n_output_channels == 11
+    assert out.shape == (30, 11, 300)
+    restored = XdawnProjector.from_dict(p.to_dict())
+    assert restored.n_output_channels == 11
+    assert restored.transform(X[:2]).shape == (2, 11, 300)
+
+
+def test_leadoff_status_marks_bad_trial(tmp_path: Path) -> None:
+    from backend.io import load_session
+    from backend.preprocess import prepare_session
+    from frontend.recorder import RawEDFRecorder
+
+    channels = ["Fz", "Cz", "P3", "Pz", "P4", "PO7", "PO8", "Oz"]
+    rng = np.random.default_rng(4)
+    raw = rng.normal(0, 5, size=(8, 1500)).astype(np.float32)
+    rec = RawEDFRecorder(tmp_path / "leadoff.edf", 500.0, channels,
+                         participant_id="P01", session_id="001")
+    rec.write(raw)
+    rec.add_annotation(0.5, -1, "stim_on/7")
+    rec.close()
+    events_path = tmp_path / "leadoff.edf_events.jsonl"
+    events_path.write_text(
+        '{"type":"stim_on/7","number":7,"block":0,"trial":0,'
+        '"recording_sample":250,"leadoff_status":0,"is_impedance_mode":false}\n'
+        '{"type":"stim_on/3","number":3,"block":0,"trial":1,'
+        '"recording_sample":750,"leadoff_status":255,"is_impedance_mode":false}\n',
+        encoding="utf-8")
+    session = load_session(tmp_path / "leadoff.edf", events_path=events_path)
+    cfg = PreprocessConfig(raw_sfreq=500.0, downsample_sfreq=250.0, xdawn_enable=False)
+    X, meta, sidecar = prepare_session(session, cfg, channels)
+    bad_by_status = meta.loc[meta["number"] == 7, "bad_trial"].iloc[0]
+    assert int(bad_by_status) == 1
+    # With only two synthetic trials the global 30% bad-ratio gate is exceeded,
+    # which proves the gate is enforced rather than silently skipped.
+    assert sidecar["qc_pass"] is False
+    assert "exceeds gate" in str(sidecar["qc"]["issues"])

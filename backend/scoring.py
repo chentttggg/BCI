@@ -42,6 +42,16 @@ def block_predictions(meta: pd.DataFrame, probabilities: np.ndarray,
         sub_meta = meta.loc[idx].reset_index(drop=True)
         scores, ranking = aggregate_number_scores(sub_meta, probabilities[idx], method=method)
         target = sub_meta["target_number"].iloc[0]
+        # Bayesian MAP confidence: mean-logit scores are log posterior odds up to a
+        # constant, so softmax over the 9 scores gives the approximate P(number|block).
+        z = np.asarray([scores.get(n, -np.inf if method == "mean_logit" else 0.0)
+                        for n in range(1, 10)], dtype=np.float64)
+        z = z - np.nanmax(z)
+        p = np.exp(z)
+        p = p / p.sum()
+        confidence = float(p[np.argmax(p)])
+        margin = float(np.sort(z)[-1] - np.sort(z)[-2]) if np.isfinite(z).sum() >= 2 else float("nan")
+
         rows.append({
             "session_id": session_id,
             "block": block,
@@ -50,6 +60,8 @@ def block_predictions(meta: pd.DataFrame, probabilities: np.ndarray,
             "predicted": int(ranking[0]),
             "top3": [int(x) for x in ranking[:3]],
             "scores": scores,
+            "confidence": confidence,
+            "margin_logit": margin,
             "correct": bool(ranking[0] == target) if pd.notna(target) else None,
         })
     return pd.DataFrame(rows)

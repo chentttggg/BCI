@@ -66,7 +66,7 @@ data/
 - 结构：temporal conv → spatial conv → BatchNorm → square → avg pool → log → dropout → 分类。
 - 输入窗口：默认 `-200ms ~ +1000ms`（与文献 epoch 区间一致）。
 - 预处理顺序：载入 EDF → 通道标签/类型校验 → 0.5Hz 高通 → 50Hz 陷波 →
-  40Hz 低通（可配）→ 降采样 → epoch → 基线校正 → 伪迹检测/标记 →
+  20Hz 低通（可配，默认）→ 降采样 → epoch → 基线校正 → xDAWN 可选增强通道 → 伪迹检测/标记 →
   训练集统计标准化。所有步骤带参数与原因。
 - 训练：按 session 交叉验证；class-balanced BCE/Focal Loss；AdamW；
   早停（val balanced accuracy/AUC）；数据增强（时间抖动、幅度缩放、通道 dropout、噪声）。

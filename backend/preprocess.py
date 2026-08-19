@@ -141,13 +141,18 @@ def epoch_data(data: np.ndarray, sfreq: float, events: pd.DataFrame,
         ep = data[:, start:stop].astype(np.float32, copy=True)
         ep = _baseline_correct(ep, base_start, base_stop)
         epochs.append(ep)
-        metas.append({
+        record = {
             "event_index": int(idx),
             "number": int(row["number"]),
             "block": float(row["block"]) if pd.notna(row["block"]) else -1,
             "trial": float(row["trial"]) if pd.notna(row["trial"]) else -1,
             "onset_sample": onset,
-        })
+        }
+        for col in ["leadoff_status", "trig_in_status", "is_impedance_mode",
+                    "packet_seq", "packet_delta_time_us"]:
+            if col in events.columns:
+                record[col] = row[col]
+        metas.append(record)
     if not epochs:
         raise ValueError("No stim_on event produced a full epoch window")
     X = np.stack(epochs)
@@ -248,6 +253,21 @@ def prepare_session(session: SessionData, cfg: PreprocessConfig,
     X, meta, dropped = epoch_data(filtered, new_sfreq, events, cfg.tmin_s, cfg.tmax_s,
                                   tuple(cfg.baseline_s))
     artifact = detect_artifacts(X, cfg)
+
+    # BrainSync packet status at marker time: 0xff/255 means all leads connected.
+    # A trial is marked bad when the device reported lead-off or impedance mode.
+    if "leadoff_status" in meta.columns:
+        status = pd.to_numeric(meta["leadoff_status"], errors="coerce")
+        leadoff_bad = status.notna() & (status.astype(int) != int(cfg.leadoff_normal_value))
+        if "is_impedance_mode" in meta.columns:
+            impedance_bad = meta["is_impedance_mode"].astype(bool).to_numpy()
+            leadoff_bad = leadoff_bad | impedance_bad
+        artifact.bad_trial = artifact.bad_trial | leadoff_bad.to_numpy()
+        artifact.metrics["n_bad_trials"] = int(artifact.bad_trial.sum())
+        artifact.metrics["bad_trial_ratio"] = float(artifact.bad_trial.mean())
+        artifact.metrics["n_leadoff_or_impedance_bad_trials"] = int(leadoff_bad.sum())
+        qc["leadoff_or_impedance_bad_trials"] = int(leadoff_bad.sum())
+
     meta["epoch_idx"] = np.arange(len(meta), dtype=int)
     meta["bad_trial"] = artifact.bad_trial.astype(int)
     meta["is_target"] = (meta["number"] == session.target_number).astype(int) \
